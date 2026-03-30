@@ -199,3 +199,52 @@ h2 {
   color: #6b7280;
   min-height: 16px;
 }
+
+/* Model selector row */
+.model-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.model-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+#model-refresh-btn {
+  padding: 6px 10px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  color: #374151;
+}
+
+#model-refresh-btn:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+#model-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#model-custom {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.model-status {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+  min-height: 16px;
+}

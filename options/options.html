@@ -30,9 +30,14 @@
       <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
     </div>
 
-    <div class="field-group">
-      <label for="model">Model</label>
-      <input type="text" id="model" placeholder="gpt-4o">
+    <div class="field-group" id="model-group">
+      <label for="model-select">Model</label>
+      <div class="model-row">
+        <select id="model-select"><option value="">— select model —</option></select>
+        <button id="model-refresh-btn" title="Reload model list" type="button">↻</button>
+      </div>
+      <input type="text" id="model-custom" placeholder="Custom model name" style="display:none;margin-top:6px">
+      <div id="model-status" class="model-status"></div>
     </div>
 
     <div class="field-group" id="base-url-group">
