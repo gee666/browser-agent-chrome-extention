@@ -142,7 +142,8 @@ runBtn.addEventListener('click', () => {
 
   chrome.storage.local.get(['provider', 'apiKey'], (config) => {
     const provider = config.provider || 'openai';
-    const needsKey = provider !== 'ollama';
+    const oauthProviders = ['openai-codex', 'anthropic-oauth', 'gemini-cli'];
+    const needsKey = !oauthProviders.includes(provider) && provider !== 'ollama';
     if (needsKey && !config.apiKey) {
       showErrorMsg('Please set your API key in ⚙ Settings');
       return;
