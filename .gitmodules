@@ -1,0 +1,3 @@
+[submodule "lib/browser-agent-core"]
+	path = lib/browser-agent-core
+	url = ../browser-agent-core
