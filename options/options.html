@@ -9,14 +9,19 @@
   <div id="app">
     <h1>Browser Agent Settings</h1>
 
+    <h2>LLM Provider (API Key)</h2>
+
     <div class="field-group">
-      <label for="provider">LLM Provider</label>
+      <label for="provider">Provider</label>
       <select id="provider">
         <option value="openai">OpenAI</option>
         <option value="anthropic">Anthropic</option>
         <option value="ollama">Ollama (local)</option>
         <option value="openrouter">OpenRouter</option>
         <option value="nvidia">NVIDIA NIM</option>
+        <option value="openai-codex">OpenAI ChatGPT (OAuth — no API key needed)</option>
+        <option value="anthropic-oauth">Anthropic Claude (OAuth — no API key needed)</option>
+        <option value="gemini-cli">Google Gemini CLI (OAuth — free tier)</option>
       </select>
     </div>
 
@@ -50,6 +55,53 @@
     <div id="form-actions">
       <button id="save-btn">Save Settings</button>
       <span id="save-confirm"></span>
+    </div>
+
+    <!-- OAuth Section -->
+    <hr class="section-divider">
+    <h2>OAuth Login (Free / Subscription Providers)</h2>
+    <p class="section-desc">Login with your existing subscription. No API key required. Select the matching OAuth provider above to use it.</p>
+
+    <!-- OpenAI Codex OAuth -->
+    <div class="oauth-card" id="oauth-openai">
+      <div class="oauth-header">
+        <div class="oauth-name">OpenAI ChatGPT Plus/Pro</div>
+        <span class="oauth-badge" id="badge-openai-codex">Not logged in</span>
+      </div>
+      <div class="oauth-detail" id="detail-openai-codex"></div>
+      <div class="oauth-actions">
+        <button class="oauth-login-btn" id="login-openai-codex">Login with OpenAI</button>
+        <button class="oauth-logout-btn" id="logout-openai-codex" hidden>Logout</button>
+      </div>
+      <div class="oauth-status" id="status-openai-codex"></div>
+    </div>
+
+    <!-- Anthropic OAuth -->
+    <div class="oauth-card" id="oauth-anthropic">
+      <div class="oauth-header">
+        <div class="oauth-name">Anthropic Claude Pro/Max</div>
+        <span class="oauth-badge" id="badge-anthropic">Not logged in</span>
+      </div>
+      <div class="oauth-detail" id="detail-anthropic"></div>
+      <div class="oauth-actions">
+        <button class="oauth-login-btn" id="login-anthropic">Login with Anthropic</button>
+        <button class="oauth-logout-btn" id="logout-anthropic" hidden>Logout</button>
+      </div>
+      <div class="oauth-status" id="status-anthropic"></div>
+    </div>
+
+    <!-- Gemini CLI OAuth -->
+    <div class="oauth-card" id="oauth-gemini">
+      <div class="oauth-header">
+        <div class="oauth-name">Google Gemini CLI (Free tier)</div>
+        <span class="oauth-badge" id="badge-gemini-cli">Not logged in</span>
+      </div>
+      <div class="oauth-detail" id="detail-gemini-cli"></div>
+      <div class="oauth-actions">
+        <button class="oauth-login-btn" id="login-gemini-cli">Login with Google</button>
+        <button class="oauth-logout-btn" id="logout-gemini-cli" hidden>Logout</button>
+      </div>
+      <div class="oauth-status" id="status-gemini-cli"></div>
     </div>
   </div>
   <script src="options.js" type="module"></script>
