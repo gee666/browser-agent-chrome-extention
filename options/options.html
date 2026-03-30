@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Browser Agent Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div id="app">
+    <h1>Browser Agent Settings</h1>
+
+    <div class="field-group">
+      <label for="provider">LLM Provider</label>
+      <select id="provider">
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="ollama">Ollama (local)</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="nvidia">NVIDIA NIM</option>
+      </select>
+    </div>
+
+    <div class="field-group" id="api-key-group">
+      <label for="apiKey">API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+    </div>
+
+    <div class="field-group">
+      <label for="model">Model</label>
+      <input type="text" id="model" placeholder="gpt-4o">
+    </div>
+
+    <div class="field-group" id="base-url-group">
+      <label for="baseUrl">Base URL</label>
+      <input type="text" id="baseUrl" placeholder="http://localhost:11434">
+    </div>
+
+    <div class="field-group">
+      <label for="maxIterations">Max Iterations</label>
+      <input type="number" id="maxIterations" min="1" max="100" value="20">
+    </div>
+
+    <div class="field-group checkbox-group">
+      <label>
+        <input type="checkbox" id="useVision" checked>
+        Use vision (send screenshots to LLM)
+      </label>
+    </div>
+
+    <div id="form-actions">
+      <button id="save-btn">Save Settings</button>
+      <span id="save-confirm"></span>
+    </div>
+  </div>
+  <script src="options.js" type="module"></script>
+</body>
+</html>

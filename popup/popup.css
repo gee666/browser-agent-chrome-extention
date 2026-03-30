@@ -1,0 +1,136 @@
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #fff;
+}
+
+#app {
+  width: 380px;
+  min-height: 200px;
+  max-height: 600px;
+  padding: 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+#status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+#status-dot.grey   { background: #9ca3af; }
+#status-dot.yellow { background: #fbbf24; }
+#status-dot.blue   { background: #3b82f6; }
+#status-dot.green  { background: #22c55e; }
+#status-dot.red    { background: #ef4444; }
+
+#status-dot.pulse {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1.0; }
+  50%       { opacity: 0.6; }
+}
+
+#status-text {
+  font-size: 14px;
+  color: #374151;
+}
+
+#task-input {
+  width: 100%;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+#form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#run-btn {
+  flex: 1;
+  padding: 8px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#run-btn:hover:not(:disabled) { background: #2563eb; }
+#run-btn:disabled { background: #9ca3af; cursor: default; }
+
+#stop-btn {
+  padding: 8px 16px;
+  background: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#stop-btn:hover:not(:disabled) { background: #4b5563; }
+#stop-btn:disabled { background: #d1d5db; cursor: default; }
+
+#progress-panel {
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 13px;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#result-panel {
+  background: #f0fdf4;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 14px;
+  color: #166534;
+}
+
+#result-panel.error {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+#footer {
+  text-align: right;
+  font-size: 12px;
+}
+
+#settings-link {
+  color: #6b7280;
+  text-decoration: none;
+}
+
+#settings-link:hover { color: #374151; }
+
+.error-msg {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <div id="status-bar">
+      <span id="status-dot"></span>
+      <span id="status-text">Idle</span>
+    </div>
+
+    <div id="task-form">
+      <textarea id="task-input" placeholder="Describe what to do...&#10;e.g. Login to facebook.com as user@example.com" rows="4"></textarea>
+      <div id="form-actions">
+        <button id="run-btn">Run Task</button>
+        <button id="stop-btn" disabled>Stop</button>
+      </div>
+    </div>
+
+    <div id="progress-panel" hidden>
+      <div id="current-url"></div>
+      <div id="iteration-counter"></div>
+      <div id="last-action"></div>
+    </div>
+
+    <div id="result-panel" hidden>
+      <div id="result-message"></div>
+    </div>
+
+    <div id="footer">
+      <a id="settings-link" href="#">⚙ Settings</a>
+    </div>
+  </div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
