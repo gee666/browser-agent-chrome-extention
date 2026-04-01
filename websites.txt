@@ -1,0 +1,90 @@
+# 100 Verified Websites
+# All links verified with Playwright on 2026-04-01
+# Format: URL — Description
+
+## GitHub — Repositories
+✅ 1.  https://github.com/trending — GitHub Trending repositories today
+✅ 2.  https://github.com/explore — Explore GitHub (topics, collections, trending)
+✅ 3.  https://github.com/anthropics/claude-code — Claude Code agentic coding tool by Anthropic
+
+## GitHub — Issue Trackers
+✅ 22. https://github.com/anthropics/claude-code/issues — Claude Code open issues
+
+## GitHub — Individual Issues
+✅ 29. https://github.com/anthropics/claude-code/issues/42249 — Claude Code issue #42249
+
+## GitHub — Issue from axios
+✅ 36. https://github.com/axios/axios/issues/6973 — Axios next roadmap issue
+
+## GitHub Docs
+37. https://docs.github.com/en/actions — GitHub Actions documentation
+38. https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests — About pull requests
+
+## Wikipedia
+39. https://en.wikipedia.org/wiki/Main_Page — Wikipedia main page
+40. https://en.wikipedia.org/wiki/Artificial_intelligence — Artificial intelligence article
+
+## Hacker News
+49. https://news.ycombinator.com/ — Hacker News front page
+50. https://news.ycombinator.com/ask — Ask HN posts
+51. https://news.ycombinator.com/show — Show HN posts
+52. https://news.ycombinator.com/item?id=47605677 — HN: Signing data structures the wrong way
+
+## Social / Communication
+54. https://www.facebook.com/ — Facebook social network
+55. https://www.instagram.com/ — Instagram photo sharing
+56. https://www.linkedin.com/ — LinkedIn professional network
+57. https://www.linkedin.com/jobs/search/?keywords=software+engineer — LinkedIn job search for software engineers
+58. https://x.com/elonmusk — Elon Musk's profile on X (Twitter)
+59. https://www.youtube.com/watch?v=dQw4w9WgXcQ — Rick Astley - Never Gonna Give You Up (YouTube)
+60. https://www.youtube.com/results?search_query=machine+learning+tutorial — YouTube search: machine learning tutorial
+61. https://www.youtube.com/@TED — TED channel on YouTube
+
+## Google Services
+62. https://mail.google.com/mail/u/0/ — Gmail inbox (requires login)
+63. https://www.google.com/maps/search/coffee+shops+near+new+york — Google Maps search: coffee shops near NYC
+64. https://www.google.com/maps/@40.7580,-73.9855,15z — Google Maps view of Times Square, NYC
+65. https://workspace.google.com/products/drive/ — Google Drive product page
+66. https://cloud.google.com/products — Google Cloud products and services
+
+## Amazon / E-commerce
+67. https://www.amazon.com/s?k=laptop — Amazon search results for "laptop"
+68. https://www.amazon.com/dp/B0947BJ67M — Amazon product page: HP 14 Laptop
+
+## AI / ML Platforms
+69. https://huggingface.co/models — Hugging Face model hub
+70. https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct — Llama 3.1 8B Instruct model card
+71. https://huggingface.co/spaces — Hugging Face Spaces (demos)
+72. https://www.kaggle.com/datasets — Kaggle open datasets
+73. https://www.kaggle.com/competitions — Kaggle ML competitions
+74. https://arxiv.org/abs/1706.03762 — arXiv: "Attention Is All You Need" (Transformer paper)
+75. https://arxiv.org/search/?searchtype=all&query=transformer+language+model — arXiv search for transformer LM papers
+76. https://claude.com/product/overview — Claude AI product overview (Anthropic)
+77. https://platform.claude.com/docs/en/intro — Anthropic Claude API documentation
+78. https://www.wolframalpha.com/input?i=integrate+x^2+from+0+to+1 — Wolfram Alpha: compute integral
+
+## Developer Documentation
+79. https://developer.mozilla.org/en-US/docs/Web/JavaScript — MDN: JavaScript reference
+80. https://developer.mozilla.org/en-US/docs/Web/HTML — MDN: HTML reference
+81. https://docs.python.org/3/ — Python 3 official documentation
+82. https://docs.python.org/3/library/asyncio.html — Python asyncio module docs
+83. https://nodejs.org/docs/latest/api/ — Node.js API documentation
+84. https://react.dev/ — React official website
+85. https://react.dev/learn — React: Quick Start tutorial
+86. https://vuejs.org/guide/introduction — Vue.js introduction guide
+87. https://nextjs.org/docs — Next.js documentation
+88. https://www.typescriptlang.org/docs/handbook/intro.html — TypeScript Handbook
+89. https://www.typescriptlang.org/play/ — TypeScript Playground (online editor)
+90. https://tailwindcss.com/docs/installation/using-vite — Tailwind CSS installation guide
+91. https://fastapi.tiangolo.com/ — FastAPI Python web framework
+92. https://expressjs.com/en/starter/hello-world.html — Express.js Hello World example
+93. https://doc.rust-lang.org/book/ — The Rust Programming Language book
+94. https://go.dev/doc/ — Go language documentation
+95. https://kubernetes.io/docs/home/ — Kubernetes documentation
+
+## Databases & Infrastructure
+96. https://www.postgresql.org/docs/current/index.html — PostgreSQL documentation
+97. https://redis.io/docs/latest/ — Redis documentation
+98. https://www.mongodb.com/docs/manual/ — MongoDB manual
+99. https://docs.docker.com/get-started/ — Docker getting started guide
+100. https://hub.docker.com/_/nginx — nginx official Docker Hub image
