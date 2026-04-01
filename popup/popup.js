@@ -10,6 +10,8 @@ const resultMessage = document.getElementById('result-message');
 const currentUrlEl = document.getElementById('current-url');
 const iterationCounter = document.getElementById('iteration-counter');
 const settingsLink = document.getElementById('settings-link');
+const logsLink     = document.getElementById('logs-link');
+const debugCheckbox = document.getElementById('debug-checkbox');
 
 const DOT_CLASSES = ['grey', 'yellow', 'blue', 'green', 'red'];
 
@@ -108,14 +110,32 @@ function renderStatus(status) {
   }
 }
 
+// Persist debug checkbox state
+debugCheckbox.addEventListener('change', () => {
+  chrome.storage.local.set({ debugMode: debugCheckbox.checked });
+});
+
+// Persist task text while the user types
+taskInput.addEventListener('input', () => {
+  chrome.storage.local.set({ lastTask: taskInput.value });
+});
+
 // Initial load
 document.addEventListener('DOMContentLoaded', () => {
-  chrome.storage.local.get('agentStatus', (data) => {
+  chrome.storage.local.get(['agentStatus', 'debugMode', 'lastTask'], (data) => {
     const status = data.agentStatus;
     renderStatus(status);
-    if (status && ['running', 'thinking', 'acting'].includes(status.state)) {
-      taskInput.value = status.task || '';
+
+    // Always restore the last task text the user typed, regardless of agent state
+    if (data.lastTask !== undefined && data.lastTask !== null) {
+      taskInput.value = data.lastTask;
+    } else if (status && status.task) {
+      // Fallback: use the task embedded in the status (older sessions)
+      taskInput.value = status.task;
     }
+
+    // Restore debug mode checkbox
+    debugCheckbox.checked = !!data.debugMode;
   });
 
   // Poll every 500ms as fallback
@@ -140,7 +160,10 @@ runBtn.addEventListener('click', () => {
     return;
   }
 
-  chrome.storage.local.get(['provider', 'apiKey'], (config) => {
+  // Persist the task text so it survives popup close/reopen
+  chrome.storage.local.set({ lastTask: task });
+
+  chrome.storage.local.get(['provider', 'apiKey', 'debugMode'], (config) => {
     const provider = config.provider || 'openai';
     const oauthProviders = ['openai-codex', 'anthropic-oauth', 'gemini-cli'];
     const needsKey = !oauthProviders.includes(provider) && provider !== 'ollama';
@@ -148,7 +171,11 @@ runBtn.addEventListener('click', () => {
       showErrorMsg('Please set your API key in ⚙ Settings');
       return;
     }
-    chrome.runtime.sendMessage({ type: 'start_task', task });
+    chrome.runtime.sendMessage({
+      type: 'start_task',
+      task,
+      debugMode: debugCheckbox.checked,
+    });
   });
 });
 
@@ -161,4 +188,10 @@ stopBtn.addEventListener('click', () => {
 settingsLink.addEventListener('click', (e) => {
   e.preventDefault();
   chrome.runtime.openOptionsPage();
+});
+
+// Logs link
+logsLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: chrome.runtime.getURL('logs/viewer.html') });
 });

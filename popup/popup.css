@@ -134,3 +134,60 @@ body {
   font-size: 12px;
   margin-top: 4px;
 }
+
+#debug-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+#debug-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  user-select: none;
+  white-space: nowrap;
+}
+
+#debug-label input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: #f59e0b;
+}
+
+#logs-link {
+  font-size: 11px;
+  color: #9ca3af;
+  text-decoration: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+#logs-link:hover { color: #6b7280; text-decoration: underline; }
+
+#debug-row:has(#debug-checkbox:checked) #logs-link {
+  color: #b45309;
+}
+
+/* Highlight the whole row when active */
+#debug-row:has(#debug-checkbox:checked) {
+  background: #fffbeb;
+  border-color: #fbbf24;
+}
+
+#debug-row:has(#debug-checkbox:checked) #debug-label {
+  color: #92400e;
+  font-weight: 600;
+}
+
+#debug-row:has(#debug-checkbox:checked) #logs-link-extra {
+  color: #b45309;
+}

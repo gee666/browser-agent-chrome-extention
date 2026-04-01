@@ -7,9 +7,11 @@ import {
   OPENAI_REDIRECT_URI, ANTHROPIC_REDIRECT_URI, GEMINI_REDIRECT_URI,
   setPendingOAuth, setPendingOAuthTabId, getPendingOAuth, clearPendingOAuth,
   storeOAuthTokens, getOAuthTokens, clearOAuthTokens, parseRedirectUrl,
+  formatDebugEntry, makeDebugFilename,
 } from '../lib/browser-agent-core/background/index.js';
 
 let currentAgent = null;
+let currentInputControl = null;
 
 // ─── OAuth callback interception ─────────────────────────────────────────────
 // Registered at TOP LEVEL so it survives service worker restarts.
@@ -105,18 +107,67 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ── Agent control ────────────────────────────────────────────────────────────
   if (message.type === 'start_task') {
     chrome.storage.local.get(
-      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision'],
+      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode'],
       (config) => {
         const llm = createProvider(config);
         const bridge = new BrowserBridge();
-        const inputControl = new InputControlBridge();
-        const executor = new ActionExecutor({ bridge, inputControl });
+        currentInputControl = new InputControlBridge();
+        const executor = new ActionExecutor({ bridge, inputControl: currentInputControl });
+
+        // ── Debug logging ────────────────────────────────────────────────────
+        // Enabled either by the popup checkbox (message.debugMode) or the
+        // persisted storage flag (config.debugMode).
+        const isDebug = !!(message.debugMode || config.debugMode);
+        // Debug logs are written to the Origin Private File System (OPFS).
+        // This is silent — no download dialogs, no interaction with Chrome's
+        // "Ask where to save" setting.  Logs are browsed via the in-extension
+        // viewer page (popup → "View Logs" link).
+        const debugLog = isDebug ? async (entry) => {
+          try {
+            const baseName    = makeDebugFilename(entry).replace(/\.md$/, '');
+            const mdFilename  = baseName + '.md';
+            const jpgFilename = baseName + '.jpg';
+
+            const root     = await self.navigator.storage.getDirectory();
+            const logsDir  = await root.getDirectoryHandle('logs', { create: true });
+
+            // Save annotated screenshot (base64 JPEG data URL → raw bytes)
+            let screenshotFile = null;
+            if (entry.screenshot) {
+              try {
+                const b64    = entry.screenshot.split(',')[1];
+                const binary = atob(b64);
+                const bytes  = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const fh = await logsDir.getFileHandle(jpgFilename, { create: true });
+                const wr = await fh.createWritable();
+                await wr.write(bytes.buffer);
+                await wr.close();
+                screenshotFile = jpgFilename;
+              } catch (imgErr) {
+                console.warn('[sw] screenshot OPFS write failed:', imgErr);
+              }
+            }
+
+            // Save markdown log
+            const content = formatDebugEntry({ ...entry, screenshotFile });
+            const mh = await logsDir.getFileHandle(mdFilename, { create: true });
+            const mw = await mh.createWritable();
+            await mw.write(content);
+            await mw.close();
+
+          } catch (e) {
+            console.warn('[sw] debugLog OPFS write failed:', e);
+          }
+        } : null;
+        // ─────────────────────────────────────────────────────────────────────
 
         currentAgent = new AgentCore({
           llm, bridge, executor,
           onStatus: (status) => bridge.sendStatus(status),
           maxIterations: config.maxIterations || 20,
           useVision: config.useVision !== false,
+          debugLog,
         });
 
         currentAgent.run(message.task).catch((err) => {
@@ -134,6 +185,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'stop_task') {
     if (currentAgent) currentAgent.stop();
+    // Abort the native input-control bridge immediately: this rejects any
+    // in-flight executor promise (so the agent loop unblocks right away) and
+    // disconnects the port (sending EOF to Python, stopping any ongoing typing
+    // or mouse movement within one inter-key delay).
+    if (currentInputControl) {
+      currentInputControl.abort();
+      currentInputControl = null;
+    }
+    currentAgent = null;
+    // Always reset stored status to 'stopped' so the popup re-enables the Run
+    // button even if the service worker was restarted and has no running agent
+    // (the previous run was force-killed, leaving stale 'running' in storage).
+    const stoppedStatus = {
+      state: 'stopped', timestamp: Date.now(),
+      task: null, iteration: 0, maxIterations: 0, url: null, title: null,
+    };
+    chrome.storage.local.set({ agentStatus: stoppedStatus });
+    chrome.runtime.sendMessage({ type: 'agent_status', status: stoppedStatus }).catch(() => {});
     sendResponse({ stopped: true });
     return true;
   }
