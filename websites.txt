@@ -43,8 +43,8 @@
 ## Google Services
 ✅ 62. https://mail.google.com/mail/u/0/ — Gmail inbox (requires login)
 ✅ 63. https://www.google.com/maps/search/coffee+shops+near+new+york — Google Maps search: coffee shops near NYC
-✅ 64. https://www.google.com/maps/@40.7580,-73.9855,15z — Google Maps view of Times Square, NYC
-65. https://workspace.google.com/products/drive/ — Google Drive product page
+✅ ✅ 64. https://www.google.com/maps/@40.7580,-73.9855,15z — Google Maps view of Times Square, NYC
+✅ 65. https://workspace.google.com/products/drive/ — Google Drive product page
 66. https://cloud.google.com/products — Google Cloud products and services
 
 ## Amazon / E-commerce
