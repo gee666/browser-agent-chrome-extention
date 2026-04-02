@@ -59,12 +59,12 @@
 ✅ 73. https://www.kaggle.com/competitions — Kaggle ML competitions
 ✅ 74. https://arxiv.org/abs/1706.03762 — arXiv: "Attention Is All You Need" (Transformer paper)
 ✅ 75. https://arxiv.org/search/?searchtype=all&query=transformer+language+model — arXiv search for transformer LM papers
-76. https://claude.com/product/overview — Claude AI product overview (Anthropic)
-77. https://platform.claude.com/docs/en/intro — Anthropic Claude API documentation
-78. https://www.wolframalpha.com/input?i=integrate+x^2+from+0+to+1 — Wolfram Alpha: compute integral
+✅ 76. https://claude.com/product/overview — Claude AI product overview (Anthropic)
+✅ 77. https://platform.claude.com/docs/en/intro — Anthropic Claude API documentation
+✅ 78. https://www.wolframalpha.com/input?i=integrate+x^2+from+0+to+1 — Wolfram Alpha: compute integral
 
 ## Developer Documentation
-79. https://developer.mozilla.org/en-US/docs/Web/JavaScript — MDN: JavaScript reference
+✅ 79. https://developer.mozilla.org/en-US/docs/Web/JavaScript — MDN: JavaScript reference
 80. https://developer.mozilla.org/en-US/docs/Web/HTML — MDN: HTML reference
 81. https://docs.python.org/3/ — Python 3 official documentation
 82. https://docs.python.org/3/library/asyncio.html — Python asyncio module docs
