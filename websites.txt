@@ -17,17 +17,17 @@
 ✅ 36. https://github.com/axios/axios/issues/6973 — Axios next roadmap issue
 
 ## GitHub Docs
-37. https://docs.github.com/en/actions — GitHub Actions documentation
-38. https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests — About pull requests
+✅ 37. https://docs.github.com/en/actions — GitHub Actions documentation
+✅ 38. https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests — About pull requests
 
 ## Wikipedia
-39. https://en.wikipedia.org/wiki/Main_Page — Wikipedia main page
-40. https://en.wikipedia.org/wiki/Artificial_intelligence — Artificial intelligence article
+✅ 39. https://en.wikipedia.org/wiki/Main_Page — Wikipedia main page
+✅ 40. https://en.wikipedia.org/wiki/Artificial_intelligence — Artificial intelligence article
 
 ## Hacker News
-49. https://news.ycombinator.com/ — Hacker News front page
-50. https://news.ycombinator.com/ask — Ask HN posts
-51. https://news.ycombinator.com/show — Show HN posts
+✅ 49. https://news.ycombinator.com/ — Hacker News front page
+✅ 50. https://news.ycombinator.com/ask — Ask HN posts
+✅ 51. https://news.ycombinator.com/show — Show HN posts
 52. https://news.ycombinator.com/item?id=47605677 — HN: Signing data structures the wrong way
 
 ## Social / Communication
