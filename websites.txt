@@ -27,8 +27,8 @@
 ## Hacker News
 ✅ 49. https://news.ycombinator.com/ — Hacker News front page
 ✅ 50. https://news.ycombinator.com/ask — Ask HN posts
-✅ 51. https://news.ycombinator.com/show — Show HN posts
-52. https://news.ycombinator.com/item?id=47605677 — HN: Signing data structures the wrong way
+✅ ✅ 51. https://news.ycombinator.com/show — Show HN posts
+✅ 52. https://news.ycombinator.com/item?id=47605677 — HN: Signing data structures the wrong way
 
 ## Social / Communication
 54. https://www.facebook.com/ — Facebook social network
