@@ -28,20 +28,20 @@
 ✅ 49. https://news.ycombinator.com/ — Hacker News front page
 ✅ 50. https://news.ycombinator.com/ask — Ask HN posts
 ✅ ✅ 51. https://news.ycombinator.com/show — Show HN posts
-✅ 52. https://news.ycombinator.com/item?id=47605677 — HN: Signing data structures the wrong way
+✅ ✅ 52. https://news.ycombinator.com/item?id=47605677 — HN: Signing data structures the wrong way
 
 ## Social / Communication
-54. https://www.facebook.com/ — Facebook social network
-55. https://www.instagram.com/ — Instagram photo sharing
-56. https://www.linkedin.com/ — LinkedIn professional network
-57. https://www.linkedin.com/jobs/search/?keywords=software+engineer — LinkedIn job search for software engineers
-58. https://x.com/elonmusk — Elon Musk's profile on X (Twitter)
-59. https://www.youtube.com/watch?v=dQw4w9WgXcQ — Rick Astley - Never Gonna Give You Up (YouTube)
-60. https://www.youtube.com/results?search_query=machine+learning+tutorial — YouTube search: machine learning tutorial
-61. https://www.youtube.com/@TED — TED channel on YouTube
+✅ 54. https://www.facebook.com/ — Facebook social network
+✅ 55. https://www.instagram.com/ — Instagram photo sharing
+✅ 56. https://www.linkedin.com/ — LinkedIn professional network
+✅ 57. https://www.linkedin.com/jobs/search/?keywords=software+engineer — LinkedIn job search for software engineers
+✅ 58. https://x.com/elonmusk — Elon Musk's profile on X (Twitter)
+✅ 59. https://www.youtube.com/watch?v=dQw4w9WgXcQ — Rick Astley - Never Gonna Give You Up (YouTube)
+✅ 60. https://www.youtube.com/results?search_query=machine+learning+tutorial — YouTube search: machine learning tutorial
+✅ 61. https://www.youtube.com/@TED — TED channel on YouTube
 
 ## Google Services
-62. https://mail.google.com/mail/u/0/ — Gmail inbox (requires login)
+✅ 62. https://mail.google.com/mail/u/0/ — Gmail inbox (requires login)
 63. https://www.google.com/maps/search/coffee+shops+near+new+york — Google Maps search: coffee shops near NYC
 64. https://www.google.com/maps/@40.7580,-73.9855,15z — Google Maps view of Times Square, NYC
 65. https://workspace.google.com/products/drive/ — Google Drive product page
