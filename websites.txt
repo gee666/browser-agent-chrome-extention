@@ -54,11 +54,11 @@
 ## AI / ML Platforms
 ✅ 69. https://huggingface.co/models — Hugging Face model hub
 ✅ 70. https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct — Llama 3.1 8B Instruct model card
-71. https://huggingface.co/spaces — Hugging Face Spaces (demos)
-72. https://www.kaggle.com/datasets — Kaggle open datasets
-73. https://www.kaggle.com/competitions — Kaggle ML competitions
-74. https://arxiv.org/abs/1706.03762 — arXiv: "Attention Is All You Need" (Transformer paper)
-75. https://arxiv.org/search/?searchtype=all&query=transformer+language+model — arXiv search for transformer LM papers
+✅ 71. https://huggingface.co/spaces — Hugging Face Spaces (demos)
+✅ 72. https://www.kaggle.com/datasets — Kaggle open datasets
+✅ 73. https://www.kaggle.com/competitions — Kaggle ML competitions
+✅ 74. https://arxiv.org/abs/1706.03762 — arXiv: "Attention Is All You Need" (Transformer paper)
+✅ 75. https://arxiv.org/search/?searchtype=all&query=transformer+language+model — arXiv search for transformer LM papers
 76. https://claude.com/product/overview — Claude AI product overview (Anthropic)
 77. https://platform.claude.com/docs/en/intro — Anthropic Claude API documentation
 78. https://www.wolframalpha.com/input?i=integrate+x^2+from+0+to+1 — Wolfram Alpha: compute integral
