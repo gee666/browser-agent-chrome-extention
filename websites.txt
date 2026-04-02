@@ -44,11 +44,11 @@
 ✅ 62. https://mail.google.com/mail/u/0/ — Gmail inbox (requires login)
 ✅ 63. https://www.google.com/maps/search/coffee+shops+near+new+york — Google Maps search: coffee shops near NYC
 ✅ ✅ 64. https://www.google.com/maps/@40.7580,-73.9855,15z — Google Maps view of Times Square, NYC
-✅ 65. https://workspace.google.com/products/drive/ — Google Drive product page
-66. https://cloud.google.com/products — Google Cloud products and services
+✅ ✅ 65. https://workspace.google.com/products/drive/ — Google Drive product page
+✅ 66. https://cloud.google.com/products — Google Cloud products and services
 
 ## Amazon / E-commerce
-67. https://www.amazon.com/s?k=laptop — Amazon search results for "laptop"
+✅ 67. https://www.amazon.com/s?k=laptop — Amazon search results for "laptop"
 68. https://www.amazon.com/dp/B0947BJ67M — Amazon product page: HP 14 Laptop
 
 ## AI / ML Platforms
