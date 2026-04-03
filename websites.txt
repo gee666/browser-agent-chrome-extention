@@ -64,8 +64,8 @@
 ✅ 78. https://www.wolframalpha.com/input?i=integrate+x^2+from+0+to+1 — Wolfram Alpha: compute integral
 
 ## Developer Documentation
-✅ 79. https://developer.mozilla.org/en-US/docs/Web/JavaScript — MDN: JavaScript reference
-80. https://developer.mozilla.org/en-US/docs/Web/HTML — MDN: HTML reference
+✅ ✅ 79. https://developer.mozilla.org/en-US/docs/Web/JavaScript — MDN: JavaScript reference
+✅ 80. https://developer.mozilla.org/en-US/docs/Web/HTML — MDN: HTML reference
 81. https://docs.python.org/3/ — Python 3 official documentation
 82. https://docs.python.org/3/library/asyncio.html — Python asyncio module docs
 83. https://nodejs.org/docs/latest/api/ — Node.js API documentation
