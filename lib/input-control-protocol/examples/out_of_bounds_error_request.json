@@ -1,0 +1,19 @@
+{
+  "id": "6d3f244c-3407-46de-5957-ccddeeff0011",
+  "command": "mouse_click",
+  "params": {
+    "x": 99999,
+    "y": 99999
+  },
+  "context": {
+    "screenX": 0,
+    "screenY": 0,
+    "outerHeight": 900,
+    "innerHeight": 820,
+    "outerWidth": 1440,
+    "innerWidth": 1440,
+    "devicePixelRatio": 1,
+    "scrollX": 0,
+    "scrollY": 0
+  }
+}

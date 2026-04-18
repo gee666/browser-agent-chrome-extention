@@ -9,6 +9,28 @@
   <div id="app">
     <h1>Browser Agent Settings</h1>
 
+    <h2 id="input-backend">Input Backend</h2>
+    <p class="section-desc">How the agent sends mouse clicks and keystrokes to the browser.</p>
+
+    <div class="field-group input-backend-group">
+      <label class="radio-option">
+        <input type="radio" name="inputBackend" id="input-backend-native" value="native">
+        <span>
+          <span class="radio-title">python-input-control (native, OS-level)</span>
+          <span class="radio-hint">Requires python-input-control installed and registered for this extension ID.</span>
+        </span>
+      </label>
+      <label class="radio-option">
+        <input type="radio" name="inputBackend" id="input-backend-cdp" value="cdp" checked>
+        <span>
+          <span class="radio-title">browser-agent-input-control (Chrome DevTools)</span>
+          <span class="radio-hint">No install required. Chrome shows a yellow “extension is debugging this browser” banner while the agent runs. Close DevTools on target tabs — the debugger can only attach once per tab.</span>
+        </span>
+      </label>
+    </div>
+
+    <hr class="section-divider">
+
     <h2>LLM Provider (API Key)</h2>
 
     <div class="field-group">

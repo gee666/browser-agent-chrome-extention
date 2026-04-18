@@ -1,0 +1,20 @@
+{
+  "id": "a1f3c8d0-7e4b-4a12-9e9b-001122334455",
+  "command": "mouse_move",
+  "params": {
+    "x": 420,
+    "y": 300,
+    "duration_ms": 180
+  },
+  "context": {
+    "screenX": 0,
+    "screenY": 0,
+    "outerHeight": 900,
+    "innerHeight": 820,
+    "outerWidth": 1440,
+    "innerWidth": 1440,
+    "devicePixelRatio": 1,
+    "scrollX": 0,
+    "scrollY": 0
+  }
+}

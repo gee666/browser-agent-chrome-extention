@@ -12,6 +12,8 @@ const iterationCounter = document.getElementById('iteration-counter');
 const settingsLink = document.getElementById('settings-link');
 const logsLink     = document.getElementById('logs-link');
 const debugCheckbox = document.getElementById('debug-checkbox');
+const inputBackendNameEl   = document.getElementById('input-backend-name');
+const inputBackendChangeEl = document.getElementById('input-backend-change');
 
 const DOT_CLASSES = ['grey', 'yellow', 'blue', 'green', 'red'];
 
@@ -120,8 +122,19 @@ taskInput.addEventListener('input', () => {
   chrome.storage.local.set({ lastTask: taskInput.value });
 });
 
+// Render the input-backend indicator line above the footer.
+function renderInputBackend(backend) {
+  if (!inputBackendNameEl) return;
+  const resolved = backend || 'cdp';
+  inputBackendNameEl.textContent = resolved === 'native' ? 'Native' : 'CDP';
+}
+
 // Initial load
 document.addEventListener('DOMContentLoaded', () => {
+  chrome.storage.local.get('inputBackend', (data) => {
+    renderInputBackend(data.inputBackend);
+  });
+
   chrome.storage.local.get(['agentStatus', 'debugMode', 'lastTask'], (data) => {
     const status = data.agentStatus;
     renderStatus(status);
@@ -195,3 +208,15 @@ logsLink.addEventListener('click', (e) => {
   e.preventDefault();
   chrome.tabs.create({ url: chrome.runtime.getURL('logs/viewer.html') });
 });
+
+// Input-backend [change] deep-link to options#input-backend.
+// Use chrome.tabs.create with a hash URL since openOptionsPage does not
+// reliably support URL hashes.
+if (inputBackendChangeEl) {
+  inputBackendChangeEl.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('options/options.html#input-backend'),
+    });
+  });
+}

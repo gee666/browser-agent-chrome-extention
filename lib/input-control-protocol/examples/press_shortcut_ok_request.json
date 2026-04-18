@@ -1,0 +1,22 @@
+{
+  "id": "07d9cee6-dea1-4078-f3f1-6677889900ab",
+  "command": "press_shortcut",
+  "params": {
+    "keys": [
+      "ctrl",
+      "shift",
+      "t"
+    ]
+  },
+  "context": {
+    "screenX": 0,
+    "screenY": 0,
+    "outerHeight": 900,
+    "innerHeight": 820,
+    "outerWidth": 1440,
+    "innerWidth": 1440,
+    "devicePixelRatio": 1,
+    "scrollX": 0,
+    "scrollY": 0
+  }
+}

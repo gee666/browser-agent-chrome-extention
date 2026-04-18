@@ -9,9 +9,24 @@ import {
   storeOAuthTokens, getOAuthTokens, clearOAuthTokens, parseRedirectUrl,
   formatDebugEntry, makeDebugFilename,
 } from '../lib/browser-agent-core/background/index.js';
+import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
+
+const DEFAULT_INPUT_BACKEND = 'cdp';
 
 let currentAgent = null;
 let currentInputControl = null;
+
+/**
+ * Create an input-control bridge based on the configured backend.
+ *   - 'native' -> InputControlBridge (python-input-control via native messaging)
+ *   - 'cdp'    -> CdpInputControlBridge (Chrome DevTools Protocol) — default
+ */
+function createInputControl({ inputBackend, bridge }) {
+  if (inputBackend === 'native') {
+    return new InputControlBridge();
+  }
+  return new CdpInputControlBridge({ bridge });
+}
 
 // ─── OAuth callback interception ─────────────────────────────────────────────
 // Registered at TOP LEVEL so it survives service worker restarts.
@@ -107,11 +122,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // ── Agent control ────────────────────────────────────────────────────────────
   if (message.type === 'start_task') {
     chrome.storage.local.get(
-      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode'],
+      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend'],
       (config) => {
+        // Resolve input backend. If unset (fresh install / upgrade), default to
+        // 'cdp' and persist it so the Settings UI reflects reality on first open.
+        let inputBackend = config.inputBackend;
+        if (!inputBackend) {
+          inputBackend = DEFAULT_INPUT_BACKEND;
+          chrome.storage.local.set({ inputBackend: DEFAULT_INPUT_BACKEND });
+        }
+
         const llm = createProvider(config);
         const bridge = new BrowserBridge();
-        currentInputControl = new InputControlBridge();
+        currentInputControl = createInputControl({ inputBackend, bridge });
         const executor = new ActionExecutor({ bridge, inputControl: currentInputControl });
 
         // ── Debug logging ────────────────────────────────────────────────────

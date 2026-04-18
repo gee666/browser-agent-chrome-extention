@@ -1,0 +1,18 @@
+{
+  "id": "18eadff7-efb2-4189-0402-778899aabbcc",
+  "command": "pause",
+  "params": {
+    "duration_ms": 250
+  },
+  "context": {
+    "screenX": 0,
+    "screenY": 0,
+    "outerHeight": 900,
+    "innerHeight": 820,
+    "outerWidth": 1440,
+    "innerWidth": 1440,
+    "devicePixelRatio": 1,
+    "scrollX": 0,
+    "scrollY": 0
+  }
+}

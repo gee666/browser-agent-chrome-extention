@@ -1,0 +1,16 @@
+{
+  "id": "5c2e133b-23f6-45cd-4846-bbccddeeff00",
+  "command": "juggle",
+  "params": {},
+  "context": {
+    "screenX": 0,
+    "screenY": 0,
+    "outerHeight": 900,
+    "innerHeight": 820,
+    "outerWidth": 1440,
+    "innerWidth": 1440,
+    "devicePixelRatio": 1,
+    "scrollX": 0,
+    "scrollY": 0
+  }
+}

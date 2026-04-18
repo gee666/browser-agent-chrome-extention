@@ -239,8 +239,29 @@ function getSelectedModel() {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision'];
+  const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'inputBackend'];
   const config = await new Promise(r => chrome.storage.local.get(keys, r));
+
+  // ── Input backend (radio group) ────────────────────────────────────────────
+  const inputBackendRadios = document.querySelectorAll('input[name="inputBackend"]');
+  let inputBackend = config.inputBackend;
+  if (!inputBackend) {
+    inputBackend = 'cdp';
+    chrome.storage.local.set({ inputBackend: 'cdp' });
+  }
+  for (const radio of inputBackendRadios) {
+    radio.checked = (radio.value === inputBackend);
+    radio.addEventListener('change', () => {
+      if (radio.checked) {
+        chrome.storage.local.set({ inputBackend: radio.value });
+      }
+    });
+  }
+  // Deep-link: scroll to #input-backend when arriving via popup
+  if (location.hash === '#input-backend') {
+    const target = document.getElementById('input-backend');
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   const providerSel  = document.getElementById('provider');
   const apiKeyInput  = document.getElementById('apiKey');

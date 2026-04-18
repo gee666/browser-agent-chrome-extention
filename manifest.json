@@ -10,7 +10,8 @@
     "storage",
     "webNavigation",
     "nativeMessaging",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "debugger"
   ],
   "host_permissions": [
     "<all_urls>"
