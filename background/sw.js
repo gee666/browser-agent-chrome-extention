@@ -193,13 +193,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           debugLog,
         });
 
-        currentAgent.run(message.task).catch((err) => {
-          bridge.sendStatus({
-            state: 'error', message: err.message, timestamp: Date.now(),
-            task: message.task, iteration: 0, maxIterations: 20,
-            url: null, title: null, actionsCount: null,
+        // Capture the bridge we just created so `finally` can tear it down
+        // even if `stop_task` swapped `currentInputControl` to null meanwhile.
+        const runInputControl = currentInputControl;
+        currentAgent.run(message.task)
+          .catch((err) => {
+            bridge.sendStatus({
+              state: 'error', message: err.message, timestamp: Date.now(),
+              task: message.task, iteration: 0, maxIterations: 20,
+              url: null, title: null, actionsCount: null,
+            });
+          })
+          .finally(() => {
+            // End-of-task cleanup: disconnect the input-control bridge so the
+            // CDP backend detaches chrome.debugger (yellow banner goes away)
+            // and the native backend closes its stdio port. This runs on
+            // every terminal path — success (done), failure, stop, max-iters,
+            // and uncaught errors — so we never leave the debugger attached.
+            try {
+              if (runInputControl && typeof runInputControl.disconnect === 'function') {
+                runInputControl.disconnect();
+              }
+            } catch (e) {
+              console.warn('[sw] inputControl.disconnect() threw:', e);
+            }
+            // Only clear the module-level refs if they're still pointing at
+            // this run (stop_task may already have nulled them out).
+            if (currentInputControl === runInputControl) currentInputControl = null;
           });
-        });
       }
     );
     sendResponse({ started: true });
