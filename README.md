@@ -41,7 +41,34 @@ You describe a task in plain language. The agent opens the page, reads every int
              └──────────────────────────┘
 ```
 
-The extension reads the DOM — it never injects fake click events. All input goes through `python-input-control`, which moves the mouse on a Bézier curve, types at human-like WPM, and respects timing constraints.
+The extension reads the DOM — it never injects fake click events. All input goes through an input-control backend (see below), which moves the mouse on a Bézier curve, types at human-like WPM, and respects timing constraints.
+
+---
+
+## Input backends
+
+The agent supports two interchangeable input backends. Both honour the same contract (`execute` / `abort`) and both avoid synthetic DOM events — they drive real mouse and keyboard input. Pick one in **⚙ Settings → Input Backend**, or from the popup’s `Input:` indicator.
+
+### `browser-agent-input-control` — Chrome DevTools Protocol (default)
+
+Uses Chrome’s built-in [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) (via the `chrome.debugger` API) to dispatch mouse and keyboard events directly to the target tab. No external installation is required — ship the extension and it works.
+
+Caveats:
+- While the agent is running, Chrome shows a yellow “**extension is debugging this browser**” banner on the target tab. This is Chrome’s mandatory notice; you cannot suppress it.
+- The debugger can attach to a given tab only once. If you have DevTools open on the target tab, close it before running a task — otherwise the backend cannot attach.
+
+This is the right default for most users.
+
+### `python-input-control` — native, OS-level
+
+A Python native-messaging host that moves the real OS mouse cursor and types on the real OS keyboard. This drives the browser exactly the way a human would — useful when you need OS-level input (e.g. file pickers, non-Chrome windows), or when you explicitly want the extra realism.
+
+Caveats:
+- Requires a one-time install of the `python-input-control` host and registration against your extension ID (see **Quick start** below).
+- On macOS, you must grant Accessibility permission.
+- While running, it controls the real cursor — don’t try to use the mouse at the same time.
+
+Pick this if you explicitly need OS-level input, or you’re doing automation that the CDP backend can’t reach.
 
 ---
 
