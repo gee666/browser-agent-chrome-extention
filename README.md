@@ -76,10 +76,12 @@ Pick this if you explicitly need OS-level input, or you’re doing automation th
 
 ### 1. Install python-input-control
 
+The native host installs **once per machine** — no extension ID is required at
+install time. You'll grant access to specific extension IDs in step 3.
+
 ```bash
 cd python-input-control
-python3 install.py --extension-id PLACEHOLDER
-# you will replace PLACEHOLDER with the real extension ID in step 4
+python3 install.py
 ```
 
 Requires Python 3.11+. On macOS, grant Accessibility permission when prompted.
@@ -94,12 +96,21 @@ Requires Python 3.11+. On macOS, grant Accessibility permission when prompted.
 
 ### 3. Register the native host with your extension ID
 
+Add your extension ID to the host's allow-list (repeat for any additional
+extensions that should share the same host):
+
 ```bash
-cd python-input-control
-python3 install.py --extension-id abcdefghijklmnopqrstuvwxyz123456
+python-input-control-install allow abcdefghijklmnopqrstuvwxyz123456
 ```
 
-Verify it worked:
+Inspect or revoke access at any time:
+
+```bash
+python-input-control-install list-allowed
+python-input-control-install disallow abcdefghijklmnopqrstuvwxyz123456
+```
+
+Verify the overall registration:
 ```bash
 python-input-control-install verify --extension-id abcdefghijklmnopqrstuvwxyz123456
 ```
@@ -389,6 +400,7 @@ git submodule update --init --recursive
 
 **"Native host has exited" or actions not working**
 - Verify python-input-control is registered: `python-input-control-install verify --extension-id <id>`
+- Inspect the host's allow-list: `python-input-control-install list-allowed`
 - On macOS: check Accessibility permission — run `python-input-control --check-permissions`
 - Check that the extension ID in the manifest registration matches the ID in `chrome://extensions`
 
