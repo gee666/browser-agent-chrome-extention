@@ -11,7 +11,8 @@
     "webNavigation",
     "nativeMessaging",
     "unlimitedStorage",
-    "debugger"
+    "debugger",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"

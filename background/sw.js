@@ -1,5 +1,5 @@
 import {
-  AgentCore, BrowserBridge, ActionExecutor, InputControlBridge,
+  AgentCore, ActionExecutor, InputControlBridge,
   OpenAIProvider, AnthropicProvider, OllamaProvider, OpenRouterProvider, NvidiaProvider,
   OpenAICodexOAuthProvider, AnthropicOAuthProvider, GeminiOAuthProvider,
   buildOpenAIAuthUrl, buildAnthropicAuthUrl, buildGeminiAuthUrl,
@@ -10,22 +10,422 @@ import {
   formatDebugEntry, makeDebugFilename,
 } from '../lib/browser-agent-core/background/index.js';
 import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
+import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
+import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
+import {
+  createTaskError,
+  isSettledByStatus,
+  buildTaskResult,
+  buildTaskResultFromRun,
+} from './task-lifecycle.js';
 
 const DEFAULT_INPUT_BACKEND = 'cdp';
 
 let currentAgent = null;
 let currentInputControl = null;
+let currentTaskRun = null;
+
+const piBridgeRuntime = createPiBridgeRuntime({
+  chromeApi: chrome,
+  logger: console,
+  async onRunTask(params) {
+    return await startAgentTask(params || {});
+  },
+});
+
+function publishAgentStatus(status) {
+  chrome.storage.local.set({ agentStatus: status });
+  chrome.runtime.sendMessage({ type: 'agent_status', status }).catch(() => {});
+}
+
+function normalizeTaskError(error, fallbackCode = 'E_RUNTIME') {
+  if (error && typeof error === 'object' && typeof error.message === 'string') {
+    return {
+      code: typeof error.code === 'string' ? error.code : fallbackCode,
+      message: error.message,
+      details: error.details,
+    };
+  }
+
+  return {
+    code: fallbackCode,
+    message: error instanceof Error ? error.message : String(error),
+    details: error,
+  };
+}
+
+function summarizeAgentHistory(agent) {
+  const history = Array.isArray(agent?._history) ? agent._history : [];
+  const entries = history.slice(-8).map((step) => ({
+    stepNumber: typeof step?.stepNumber === 'number' ? step.stepNumber : null,
+    evaluation: typeof step?.evaluation === 'string' ? step.evaluation : '',
+    memory: typeof step?.memory === 'string' ? step.memory : '',
+    nextGoal: typeof step?.nextGoal === 'string' ? step.nextGoal : '',
+    actionResult: typeof step?.actionResult === 'string' ? step.actionResult : '',
+  }));
+
+  const lines = entries.map((entry, index) => {
+    const parts = [];
+    const num = typeof entry.stepNumber === 'number' ? entry.stepNumber + 1 : index + 1;
+    if (entry.evaluation) parts.push(`evaluation: ${entry.evaluation}`);
+    if (entry.nextGoal) parts.push(`next: ${entry.nextGoal}`);
+    if (entry.actionResult) parts.push(`result: ${entry.actionResult}`);
+    else if (entry.memory) parts.push(`memory: ${entry.memory}`);
+    return `${num}. ${parts.join(' | ') || 'step recorded'}`;
+  });
+
+  return {
+    steps: history.length,
+    recentSteps: entries,
+    text: lines.join('\n'),
+  };
+}
+
+function stopCurrentTask() {
+  const hadRunningTask = !!currentTaskRun;
+  if (currentTaskRun) currentTaskRun.cancelRequested = true;
+  if (currentAgent) currentAgent.stop();
+  if (currentInputControl) {
+    currentInputControl.abort();
+    currentInputControl = null;
+  }
+  currentAgent = null;
+
+  const status = {
+    state: hadRunningTask ? 'stopping' : 'stopped', timestamp: Date.now(),
+    task: hadRunningTask ? currentTaskRun?.task || null : null,
+    iteration: 0, maxIterations: 0, url: null, title: null,
+  };
+  publishAgentStatus(status);
+  return status;
+}
+
+function createDebugLogger(isDebug) {
+  return isDebug ? async (entry) => {
+    try {
+      const baseName = makeDebugFilename(entry).replace(/\.md$/, '');
+      const mdFilename = baseName + '.md';
+      const jpgFilename = baseName + '.jpg';
+
+      const root = await self.navigator.storage.getDirectory();
+      const logsDir = await root.getDirectoryHandle('logs', { create: true });
+
+      let screenshotFile = null;
+      if (entry.screenshot) {
+        try {
+          const b64 = entry.screenshot.split(',')[1];
+          const binary = atob(b64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const fh = await logsDir.getFileHandle(jpgFilename, { create: true });
+          const wr = await fh.createWritable();
+          await wr.write(bytes.buffer);
+          await wr.close();
+          screenshotFile = jpgFilename;
+        } catch (imgErr) {
+          console.warn('[sw] screenshot OPFS write failed:', imgErr);
+        }
+      }
+
+      const content = formatDebugEntry({ ...entry, screenshotFile });
+      const mh = await logsDir.getFileHandle(mdFilename, { create: true });
+      const mw = await mh.createWritable();
+      await mw.write(content);
+      await mw.close();
+    } catch (e) {
+      console.warn('[sw] debugLog OPFS write failed:', e);
+    }
+  } : null;
+}
+
+async function loadAgentConfig() {
+  return await new Promise((resolve, reject) => {
+    chrome.storage.local.get(
+      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend'],
+      (config) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(config);
+      },
+    );
+  });
+}
+
+async function startAgentTask({
+  taskId = null,
+  task,
+  debugMode = false,
+  url = null,
+  tabId = null,
+  tab_id = null,
+  useActiveTab = false,
+  use_active_tab = false,
+  maxIterations: maxIterationsOverride = null,
+  max_iterations = null,
+  useVision = null,
+  use_vision = null,
+} = {}) {
+  if (currentTaskRun) {
+    throw createTaskError('E_BUSY', `Browser task ${currentTaskRun.taskId || 'current'} is already running`, {
+      taskId: currentTaskRun.taskId || null,
+      task: currentTaskRun.task || null,
+    });
+  }
+
+  const taskRun = {
+    taskId,
+    task,
+    startedAt: Date.now(),
+    terminalResult: null,
+    settled: false,
+    cancelRequested: false,
+    resolve: null,
+    reject: null,
+    promise: null,
+    finish: null,
+  };
+  taskRun.promise = new Promise((resolve, reject) => {
+    taskRun.resolve = resolve;
+    taskRun.reject = reject;
+  });
+  currentTaskRun = taskRun;
+
+  const settle = (result) => {
+    if (taskRun.settled) return taskRun.terminalResult;
+    taskRun.settled = true;
+    taskRun.terminalResult = result;
+    if (currentTaskRun === taskRun) {
+      currentTaskRun = null;
+      currentAgent = null;
+    }
+    taskRun.resolve(result);
+    return result;
+  };
+  taskRun.finish = settle;
+
+  try {
+    const config = await loadAgentConfig();
+    if (taskRun.cancelRequested || taskRun.settled) {
+      publishAgentStatus({
+        state: 'stopped',
+        message: 'Cancellation requested',
+        timestamp: Date.now(),
+        task,
+        iteration: 0,
+        maxIterations: 0,
+        url: null,
+        title: null,
+      });
+      settle(buildTaskResult(taskRun, 'stopped', {
+        cancelled: true,
+        message: 'Cancellation requested',
+      }));
+      return await taskRun.promise;
+    }
+
+    let inputBackend = config.inputBackend;
+    if (!inputBackend) {
+      inputBackend = DEFAULT_INPUT_BACKEND;
+      chrome.storage.local.set({ inputBackend: DEFAULT_INPUT_BACKEND });
+    }
+
+    const llm = createProvider(config);
+    const target = await piBridgeRuntime.resolveRunTaskTab({
+      tabId: tabId ?? tab_id,
+      useActiveTab: useActiveTab || use_active_tab,
+    });
+    const bridge = await piBridgeRuntime.createAgentBrowserBridge(target.tabId);
+    await chrome.tabs.update(target.tabId, { active: true }).catch(() => {});
+    if (url) {
+      try {
+        await bridge.navigate(url);
+      } catch (error) {
+        throw createTaskError('E_NAV_TIMEOUT', error?.message || `Failed to navigate task tab to ${url}`, { url, tabId: target.tabId });
+      }
+    }
+    currentInputControl = createInputControl({ inputBackend, bridge, inspector: piBridgeRuntime.inspector });
+    const executor = new ActionExecutor({ bridge, inputControl: currentInputControl });
+    const runInputControl = currentInputControl;
+    const maxIterations = (maxIterationsOverride ?? max_iterations ?? config.maxIterations) || 20;
+    const debugLog = createDebugLogger(!!(debugMode || config.debugMode));
+
+    let lastStatus = null;
+
+    currentAgent = new AgentCore({
+      llm,
+      bridge,
+      executor,
+      onStatus: (status) => {
+        const terminalState = status.state;
+        lastStatus = { ...status };
+
+        if (terminalState === 'error') {
+          status.state = 'thinking';
+          status.recoverable = true;
+          status.recoverableErrorMessage = status.message || null;
+        }
+
+        if (isSettledByStatus(terminalState)) {
+          settle(buildTaskResult(taskRun, terminalState, {
+            message: status.message || null,
+            finalStatus: lastStatus,
+            historySummary: summarizeAgentHistory(currentAgent),
+          }));
+        }
+      },
+      maxIterations,
+      useVision: (useVision ?? use_vision ?? config.useVision) !== false,
+      debugLog,
+    });
+
+    currentAgent.run(task)
+      .then((runResult) => {
+        const result = {
+          ...buildTaskResultFromRun(taskRun, { runResult, lastStatus }),
+          historySummary: summarizeAgentHistory(currentAgent),
+        };
+        if (result.finalStatus) publishAgentStatus(result.finalStatus);
+        settle(result);
+      })
+      .catch((err) => {
+        const normalizedError = normalizeTaskError(err);
+        const errorStatus = {
+          state: 'error', message: normalizedError.message, timestamp: Date.now(),
+          task, iteration: 0, maxIterations,
+          url: null, title: null, actionsCount: null,
+        };
+        bridge.sendStatus(errorStatus);
+        settle(buildTaskResult(taskRun, 'error', {
+          message: normalizedError.message,
+          error: createTaskError(normalizedError.code, normalizedError.message, normalizedError.details),
+          finalStatus: errorStatus,
+          historySummary: summarizeAgentHistory(currentAgent),
+        }));
+      })
+      .finally(() => {
+        try {
+          if (runInputControl && typeof runInputControl.disconnect === 'function') {
+            runInputControl.disconnect();
+          }
+        } catch (e) {
+          console.warn('[sw] inputControl.disconnect() threw:', e);
+        }
+        if (currentInputControl === runInputControl) currentInputControl = null;
+      });
+  } catch (error) {
+    const normalizedError = normalizeTaskError(error);
+    const errorStatus = {
+      state: 'error',
+      message: normalizedError.message,
+      timestamp: Date.now(),
+      task,
+      iteration: 0,
+      maxIterations: 0,
+      url: null,
+      title: null,
+      actionsCount: null,
+    };
+    publishAgentStatus(errorStatus);
+    const result = buildTaskResult(taskRun, 'error', {
+      message: normalizedError.message,
+      error: createTaskError(normalizedError.code, normalizedError.message, normalizedError.details),
+      finalStatus: errorStatus,
+      historySummary: summarizeAgentHistory(currentAgent),
+    });
+    settle(result);
+  }
+
+  return await taskRun.promise;
+}
+
+const piBridgeController = createBridgeController({
+  storageArea: chrome.storage.local,
+  logger: console,
+  startBridgeImpl(config) {
+    return startBridge({
+      enabled: config.enabled,
+      url: config.url,
+      autoConnect: true,
+      logger: console,
+      helloPayload: {
+        v: 1,
+        kind: 'hello',
+        extensionId: chrome.runtime.id,
+        version: chrome.runtime.getManifest().version,
+        capabilities: [...piBridgeRuntime.capabilities],
+      },
+      async handleRequest(frame) {
+        try {
+          return await piBridgeRuntime.handleRequest(frame);
+        } catch (error) {
+          throw error?.code ? error : createTaskError('E_INTERNAL', error?.message || String(error), error);
+        }
+      },
+    });
+  },
+});
+
+const PI_BRIDGE_RECONNECT_ALARM = 'pi-bridge-reconnect';
+
+async function ensurePiBridgeReconnectAlarm() {
+  try {
+    await chrome.alarms.create(PI_BRIDGE_RECONNECT_ALARM, { periodInMinutes: 0.4 });
+  } catch (error) {
+    console.warn('[sw] failed to schedule pi bridge reconnect alarm', error);
+  }
+}
+
+async function bootPiBridge() {
+  try {
+    await ensurePiBridgeReconnectAlarm();
+    const bridge = await piBridgeController.refreshFromStorage();
+    await piBridgeRuntime.setEnabled(bridge?.config?.enabled !== false);
+  } catch (error) {
+    console.error('[sw] pi bridge startup failed', error);
+  }
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  void bootPiBridge();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  void bootPiBridge();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== PI_BRIDGE_RECONNECT_ALARM) return;
+  const bridge = piBridgeController.getCurrentBridge();
+  if (!bridge?.config?.enabled) {
+    return;
+  }
+  if (bridge?.client?.isConnected) {
+    bridge.client.send({ v: 1, kind: 'probe', id: `keepalive-${Date.now()}` });
+    return;
+  }
+  void bootPiBridge();
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.piBridgeConfig) {
+    void bootPiBridge();
+  }
+});
+
+void bootPiBridge();
 
 /**
  * Create an input-control bridge based on the configured backend.
  *   - 'native' -> InputControlBridge (python-input-control via native messaging)
  *   - 'cdp'    -> CdpInputControlBridge (Chrome DevTools Protocol) — default
  */
-function createInputControl({ inputBackend, bridge }) {
+function createInputControl({ inputBackend, bridge, inspector }) {
   if (inputBackend === 'native') {
     return new InputControlBridge();
   }
-  return new CdpInputControlBridge({ bridge });
+  return new CdpInputControlBridge({ bridge, inspector });
 }
 
 // ─── OAuth callback interception ─────────────────────────────────────────────
@@ -121,132 +521,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ── Agent control ────────────────────────────────────────────────────────────
   if (message.type === 'start_task') {
-    chrome.storage.local.get(
-      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend'],
-      (config) => {
-        // Resolve input backend. If unset (fresh install / upgrade), default to
-        // 'cdp' and persist it so the Settings UI reflects reality on first open.
-        let inputBackend = config.inputBackend;
-        if (!inputBackend) {
-          inputBackend = DEFAULT_INPUT_BACKEND;
-          chrome.storage.local.set({ inputBackend: DEFAULT_INPUT_BACKEND });
-        }
+    if (currentTaskRun) {
+      sendResponse({
+        started: false,
+        error: `Browser task ${currentTaskRun.taskId || 'current'} is already running`,
+        code: 'E_BUSY',
+      });
+      return true;
+    }
 
-        const llm = createProvider(config);
-        const bridge = new BrowserBridge();
-        currentInputControl = createInputControl({ inputBackend, bridge });
-        const executor = new ActionExecutor({ bridge, inputControl: currentInputControl });
-
-        // ── Debug logging ────────────────────────────────────────────────────
-        // Enabled either by the popup checkbox (message.debugMode) or the
-        // persisted storage flag (config.debugMode).
-        const isDebug = !!(message.debugMode || config.debugMode);
-        // Debug logs are written to the Origin Private File System (OPFS).
-        // This is silent — no download dialogs, no interaction with Chrome's
-        // "Ask where to save" setting.  Logs are browsed via the in-extension
-        // viewer page (popup → "View Logs" link).
-        const debugLog = isDebug ? async (entry) => {
-          try {
-            const baseName    = makeDebugFilename(entry).replace(/\.md$/, '');
-            const mdFilename  = baseName + '.md';
-            const jpgFilename = baseName + '.jpg';
-
-            const root     = await self.navigator.storage.getDirectory();
-            const logsDir  = await root.getDirectoryHandle('logs', { create: true });
-
-            // Save annotated screenshot (base64 JPEG data URL → raw bytes)
-            let screenshotFile = null;
-            if (entry.screenshot) {
-              try {
-                const b64    = entry.screenshot.split(',')[1];
-                const binary = atob(b64);
-                const bytes  = new Uint8Array(binary.length);
-                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                const fh = await logsDir.getFileHandle(jpgFilename, { create: true });
-                const wr = await fh.createWritable();
-                await wr.write(bytes.buffer);
-                await wr.close();
-                screenshotFile = jpgFilename;
-              } catch (imgErr) {
-                console.warn('[sw] screenshot OPFS write failed:', imgErr);
-              }
-            }
-
-            // Save markdown log
-            const content = formatDebugEntry({ ...entry, screenshotFile });
-            const mh = await logsDir.getFileHandle(mdFilename, { create: true });
-            const mw = await mh.createWritable();
-            await mw.write(content);
-            await mw.close();
-
-          } catch (e) {
-            console.warn('[sw] debugLog OPFS write failed:', e);
-          }
-        } : null;
-        // ─────────────────────────────────────────────────────────────────────
-
-        currentAgent = new AgentCore({
-          llm, bridge, executor,
-          onStatus: (status) => bridge.sendStatus(status),
-          maxIterations: config.maxIterations || 20,
-          useVision: config.useVision !== false,
-          debugLog,
-        });
-
-        // Capture the bridge we just created so `finally` can tear it down
-        // even if `stop_task` swapped `currentInputControl` to null meanwhile.
-        const runInputControl = currentInputControl;
-        currentAgent.run(message.task)
-          .catch((err) => {
-            bridge.sendStatus({
-              state: 'error', message: err.message, timestamp: Date.now(),
-              task: message.task, iteration: 0, maxIterations: 20,
-              url: null, title: null, actionsCount: null,
-            });
-          })
-          .finally(() => {
-            // End-of-task cleanup: disconnect the input-control bridge so the
-            // CDP backend detaches chrome.debugger (yellow banner goes away)
-            // and the native backend closes its stdio port. This runs on
-            // every terminal path — success (done), failure, stop, max-iters,
-            // and uncaught errors — so we never leave the debugger attached.
-            try {
-              if (runInputControl && typeof runInputControl.disconnect === 'function') {
-                runInputControl.disconnect();
-              }
-            } catch (e) {
-              console.warn('[sw] inputControl.disconnect() threw:', e);
-            }
-            // Only clear the module-level refs if they're still pointing at
-            // this run (stop_task may already have nulled them out).
-            if (currentInputControl === runInputControl) currentInputControl = null;
-          });
-      }
-    );
+    startAgentTask({ task: message.task, debugMode: message.debugMode, useActiveTab: true })
+      .catch((error) => {
+        console.warn('[sw] start_task failed', error);
+      });
     sendResponse({ started: true });
     return true;
   }
 
   if (message.type === 'stop_task') {
-    if (currentAgent) currentAgent.stop();
-    // Abort the native input-control bridge immediately: this rejects any
-    // in-flight executor promise (so the agent loop unblocks right away) and
-    // disconnects the port (sending EOF to Python, stopping any ongoing typing
-    // or mouse movement within one inter-key delay).
-    if (currentInputControl) {
-      currentInputControl.abort();
-      currentInputControl = null;
-    }
-    currentAgent = null;
-    // Always reset stored status to 'stopped' so the popup re-enables the Run
-    // button even if the service worker was restarted and has no running agent
-    // (the previous run was force-killed, leaving stale 'running' in storage).
-    const stoppedStatus = {
-      state: 'stopped', timestamp: Date.now(),
-      task: null, iteration: 0, maxIterations: 0, url: null, title: null,
-    };
-    chrome.storage.local.set({ agentStatus: stoppedStatus });
-    chrome.runtime.sendMessage({ type: 'agent_status', status: stoppedStatus }).catch(() => {});
+    stopCurrentTask();
     sendResponse({ stopped: true });
     return true;
   }

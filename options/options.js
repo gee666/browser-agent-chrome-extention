@@ -1,3 +1,5 @@
+import { DEFAULT_PI_BRIDGE_CONFIG, normalizePiBridgeConfig, readPiBridgeConfig } from '../lib/pi-browser-agent-bridge/src/index.js';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODEL_DEFAULTS = {
@@ -238,22 +240,45 @@ function getSelectedModel() {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+function setStorage(items) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set(items, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'inputBackend'];
-  const config = await new Promise(r => chrome.storage.local.get(keys, r));
+  const [config, piBridgeConfig] = await Promise.all([
+    new Promise(r => chrome.storage.local.get(keys, r)),
+    readPiBridgeConfig(chrome.storage.local),
+  ]);
 
   // ── Input backend (radio group) ────────────────────────────────────────────
   const inputBackendRadios = document.querySelectorAll('input[name="inputBackend"]');
   let inputBackend = config.inputBackend;
   if (!inputBackend) {
     inputBackend = 'cdp';
-    chrome.storage.local.set({ inputBackend: 'cdp' });
+    try {
+      await setStorage({ inputBackend: 'cdp' });
+    } catch (error) {
+      console.error('[options] failed to persist default input backend', error);
+    }
   }
   for (const radio of inputBackendRadios) {
     radio.checked = (radio.value === inputBackend);
-    radio.addEventListener('change', () => {
-      if (radio.checked) {
-        chrome.storage.local.set({ inputBackend: radio.value });
+    radio.addEventListener('change', async () => {
+      if (!radio.checked) return;
+      try {
+        await setStorage({ inputBackend: radio.value });
+      } catch (error) {
+        console.error('[options] failed to save input backend', error);
+        showError(`Failed to save input backend: ${error.message}`);
       }
     });
   }
@@ -271,6 +296,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const saveBtn      = document.getElementById('save-btn');
   const saveConfirm  = document.getElementById('save-confirm');
   const refreshBtn   = document.getElementById('model-refresh-btn');
+  const piBridgeEnabledInput = document.getElementById('piBridgeEnabled');
+  const piBridgeUrlInput = document.getElementById('piBridgeUrl');
+
+  piBridgeEnabledInput.checked = piBridgeConfig.enabled;
+  piBridgeUrlInput.value = piBridgeConfig.url || DEFAULT_PI_BRIDGE_CONFIG.url;
 
   providerSel.value    = config.provider || 'openai';
   apiKeyInput.value    = config.apiKey   || '';
@@ -324,7 +354,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────────
-  saveBtn.addEventListener('click', () => {
+  saveBtn.addEventListener('click', async () => {
     const provider = providerSel.value;
     const isOAuth = OAUTH_PROVIDERS.includes(provider);
     const model = getSelectedModel();
@@ -338,18 +368,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    chrome.storage.local.set({
-      provider,
-      apiKey:         apiKeyInput.value.trim(),
-      model,
-      baseUrl:        baseUrlInput.value.trim(),
-      maxIterations:  parseInt(maxIterInput.value, 10) || 20,
-      useVision:      useVisionInput.checked,
-    }, () => {
+    try {
+      await setStorage({
+        provider,
+        apiKey:         apiKeyInput.value.trim(),
+        model,
+        baseUrl:        baseUrlInput.value.trim(),
+        maxIterations:  parseInt(maxIterInput.value, 10) || 20,
+        useVision:      useVisionInput.checked,
+        piBridgeConfig: normalizePiBridgeConfig({
+          enabled: piBridgeEnabledInput.checked,
+          url: piBridgeUrlInput.value,
+        }),
+      });
       saveConfirm.textContent = 'Saved ✓';
       saveConfirm.style.color = '#16a34a';
       setTimeout(() => { saveConfirm.textContent = ''; }, 2000);
-    });
+    } catch (error) {
+      console.error('[options] failed to save settings', error);
+      showError(`Failed to save settings: ${error.message}`);
+    }
   });
 
   // ── OAuth section ─────────────────────────────────────────────────────────────
