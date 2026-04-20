@@ -1,3 +1,12 @@
 [submodule "lib/browser-agent-core"]
 	path = lib/browser-agent-core
 	url = ../browser-agent-core
+[submodule "lib/browser-agent-input-control"]
+	path = lib/browser-agent-input-control
+	url = https://github.com/gee666/browser-agent-input-control.git
+[submodule "lib/pi-browser-agent-bridge"]
+	path = lib/pi-browser-agent-bridge
+	url = https://github.com/gee666/pi-browser-agent-bridge.git
+[submodule "lib/input-control-protocol"]
+	path = lib/input-control-protocol
+	url = https://github.com/gee666/input-control-protocol.git
