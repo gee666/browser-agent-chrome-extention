@@ -359,6 +359,46 @@ await provider.complete({ system, messages, screenshot })
 
 ---
 
+## Driving from pi
+
+You can expose `browser-agent-ext` to a pi session through the local `pi-browser-agent` broker.
+
+### Pieces
+
+- `pi-browser-agent/` — pi extension that starts the local WebSocket broker and lazily registers `browser_*` tools
+- `browser-agent-ext/` — Chrome extension runtime
+- `browser-agent-ext/lib/pi-browser-agent-bridge/` — bridge loaded by the extension service worker
+
+### Quick start
+
+1. Load `browser-agent-ext` unpacked in Chrome.
+2. Open the extension options and make sure **Enable pi bridge** is on.
+3. Leave the default bridge URL as `ws://127.0.0.1:7878` unless you need a custom host/port.
+4. Enable `pi-browser-agent` in your pi setup.
+5. In the pi session, call `browser_agent_tools` first.
+
+That first meta-tool probes the broker/bridge and then registers the full browser toolkit for the session.
+
+### Typical pi flow
+
+```text
+browser_agent_tools
+browser_list_tabs
+browser_get_html
+browser_get_console_logs
+browser_run_task
+```
+
+### WSL note
+
+If pi runs inside WSL and Chrome runs on Windows, loopback usually works. If it does not, bind the broker explicitly and point the extension at the WSL IP:
+
+```bash
+PI_BA_HOST=0.0.0.0 pi
+```
+
+Then set the extension bridge URL to `ws://<wsl-ip>:7878`.
+
 ## Development
 
 ### Run framework tests
