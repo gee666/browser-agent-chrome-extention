@@ -57,7 +57,7 @@ function removeTabListeners(tabsApi, listeners) {
 
 function buildContentScriptFunctionBody(mode) {
   if (mode === 'html') {
-    return function collectHtml({ selector, selectorAll, strip }) {
+    return function collectHtml({ selector, selectorAll, strip, maxBytes }) {
       const cloneNode = (node) => node.cloneNode(true);
       const stripClone = (root, stripValues) => {
         const stripSet = new Set(Array.isArray(stripValues) ? stripValues : []);
@@ -75,29 +75,55 @@ function buildContentScriptFunctionBody(mode) {
         }
       };
 
+      const applyLimit = (html) => {
+        const limit = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : null;
+        if (limit === null) {
+          return { html, truncated: false, byteLength: html.length };
+        }
+        // Measure byte length to stay within the requested limit for UTF-8
+        // payloads, while still slicing on character boundaries.
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(html);
+        if (bytes.length <= limit) {
+          return { html, truncated: false, byteLength: bytes.length };
+        }
+        const sliced = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, limit));
+        return { html: sliced, truncated: true, byteLength: limit, originalByteLength: bytes.length };
+      };
+
       if (!selector) {
         const root = cloneNode(document.documentElement);
         stripClone(root, strip);
+        const limited = applyLimit(root.outerHTML);
         return {
-          html: root.outerHTML,
+          html: limited.html,
           url: location.href,
           title: document.title,
+          truncated: limited.truncated,
+          byteLength: limited.byteLength,
+          originalByteLength: limited.originalByteLength,
+          maxBytes: Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : null,
         };
       }
 
       const elements = Array.from(document.querySelectorAll(selector));
       const selected = selectorAll ? elements : elements.slice(0, 1);
-      const html = selected.map((element) => {
+      const combined = selected.map((element) => {
         const root = cloneNode(element);
         stripClone(root, strip);
         return root.outerHTML;
       }).join('\n');
+      const limited = applyLimit(combined);
       return {
-        html,
+        html: limited.html,
         matches: elements.length,
         selector,
         url: location.href,
         title: document.title,
+        truncated: limited.truncated,
+        byteLength: limited.byteLength,
+        originalByteLength: limited.originalByteLength,
+        maxBytes: Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : null,
       };
     };
   }
@@ -714,6 +740,14 @@ export function createPiBridgeRuntime({
     attachHooks();
     if (warmed) return;
     warmed = true;
+    // Restore live CDP subscriptions after service-worker restart / re-enable.
+    // Without this, previously-opened tabs would only get re-armed when a later
+    // request happens to touch them, leaving a silent observability gap.
+    try {
+      await observability.armExistingTabs();
+    } catch (error) {
+      logger.warn?.('[pi-bridge] failed to arm existing tabs during warmUp', error);
+    }
   }
 
   async function setEnabled(enabled) {
@@ -758,7 +792,7 @@ export function createPiBridgeRuntime({
     resolveTarget,
     navigate: async ({ tabId, url, waitUntil }) => await navigate({ tabId, url, waitUntil, timeoutMs: DEFAULT_WAIT_TIMEOUT_MS }),
     captureScreenshot,
-    getHtml: async ({ tabId, selector, selectorAll, strip }) => await executeInTab(tabId, 'html', { selector, selectorAll, strip }),
+    getHtml: async ({ tabId, selector, selectorAll, strip, maxBytes }) => await executeInTab(tabId, 'html', { selector, selectorAll, strip, maxBytes }),
     getDomInfo: async ({ tabId, selector, selectorAll, limit, include }) => await executeInTab(tabId, 'domInfo', { selector, selectorAll, limit, include }),
     getComputedStyles: async ({ tabId, selector, properties, pseudo, includeMatchedRules, includeInherited, includeBoxModel }) => await executeInTab(tabId, 'computedStyles', { selector, properties, pseudo, includeMatchedRules, includeInherited, includeBoxModel }),
     listTabs,
@@ -846,6 +880,41 @@ export function createPiBridgeRuntime({
           logger.warn?.('[pi-bridge] failed to arm observability before task navigation', { tabId: targetTabId, error });
         });
         await navigate({ tabId: targetTabId, url, waitUntil: 'settle', timeoutMs });
+      };
+      // Task-tab-aware screenshot: the inherited BrowserBridge.takeScreenshot()
+      // uses chrome.tabs.captureVisibleTab(), which captures whatever tab the
+      // user is currently looking at — not necessarily the task tab. Capture
+      // via the existing CDP session against the task tab id so screenshots
+      // remain scoped to the task even when the user switches tabs. Only fall
+      // back to captureVisibleTab() if the CDP path fails entirely.
+      bridge.takeScreenshot = async () => {
+        try {
+          const cdpResult = await inspector.send(targetTabId, 'Page.captureScreenshot', {
+            format: 'png',
+            fromSurface: true,
+            captureBeyondViewport: false,
+          });
+          if (cdpResult?.data) {
+            return `data:image/png;base64,${cdpResult.data}`;
+          }
+          logger.warn?.('[pi-bridge] CDP screenshot returned no data for task tab', { tabId: targetTabId });
+        } catch (error) {
+          logger.warn?.('[pi-bridge] CDP screenshot failed, falling back to captureVisibleTab', { tabId: targetTabId, error });
+        }
+        // Last-resort fallback to the inherited behavior.
+        return await new Promise((resolve) => {
+          try {
+            chromeApi.tabs.captureVisibleTab(null, { format: 'png' }, (dataUrl) => {
+              if (chromeApi.runtime?.lastError || !dataUrl) {
+                resolve(null);
+                return;
+              }
+              resolve(dataUrl);
+            });
+          } catch {
+            resolve(null);
+          }
+        });
       };
       return bridge;
     },

@@ -16,11 +16,28 @@ const MODEL_DEFAULTS = {
 const SHOW_BASE_URL = ['ollama', 'openrouter', 'nvidia'];
 const NEEDS_API_KEY = ['openai', 'anthropic', 'openrouter', 'nvidia'];
 const OAUTH_PROVIDERS = ['openai-codex', 'anthropic-oauth', 'gemini-cli'];
-const OAUTH_KEY_MAP = {
-  'openai-codex': 'openai-codex',
-  'anthropic-oauth': 'anthropic',
-  'gemini-cli': 'gemini-cli',
-};
+
+// Normalized OAuth UI config.
+//
+// - `providerId`: identifier used at the background / storage layer (matches
+//   the key returned from the `oauth_status` message and the provider value
+//   passed to `oauth_start` / `oauth_logout`).
+// - `uiId`: prefix used in the Options HTML for DOM ids (e.g. `login-<uiId>`,
+//   `badge-<uiId>`, `status-<uiId>`, `detail-<uiId>`, `logout-<uiId>`).
+//
+// These two values are NOT always the same — in particular Anthropic's
+// OAuth provider id is `anthropic` while the HTML controls use the `anthropic`
+// ui prefix (not `anthropic-oauth`). Keeping them separate prevents the class
+// of DOM-id-mismatch bug that previously left the Anthropic login/logout
+// buttons wired to non-existent elements.
+const OAUTH_UI_CONFIG = [
+  { providerId: 'openai-codex', uiId: 'openai-codex' },
+  { providerId: 'anthropic',    uiId: 'anthropic' },
+  { providerId: 'gemini-cli',   uiId: 'gemini-cli' },
+];
+// Preserved for backwards compatibility with any external code that imports
+// this symbol. Maps uiId -> providerId (storeKey).
+const OAUTH_KEY_MAP = Object.fromEntries(OAUTH_UI_CONFIG.map((entry) => [entry.uiId, entry.providerId]));
 
 // ── UI helper ─────────────────────────────────────────────────────────────────
 
@@ -397,9 +414,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (msg.type === 'oauth_result') handleOAuthResult(msg.status);
   });
 
-  for (const [uiKey, storeKey] of Object.entries(OAUTH_KEY_MAP)) {
-    document.getElementById(`login-${uiKey}`)?.addEventListener('click',  () => startOAuthLogin(uiKey, storeKey));
-    document.getElementById(`logout-${uiKey}`)?.addEventListener('click', () => doOAuthLogout(storeKey));
+  for (const { providerId, uiId } of OAUTH_UI_CONFIG) {
+    document.getElementById(`login-${uiId}`)?.addEventListener('click',  () => startOAuthLogin(uiId, providerId));
+    document.getElementById(`logout-${uiId}`)?.addEventListener('click', () => doOAuthLogout(providerId));
   }
 });
 
@@ -409,9 +426,9 @@ async function refreshOAuthStatus() {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'oauth_status' }, (statuses) => {
       if (chrome.runtime.lastError || !statuses) { resolve(); return; }
-      for (const [uiKey, storeKey] of Object.entries(OAUTH_KEY_MAP)) {
-        const info = statuses[storeKey];
-        if (info) updateOAuthUI(uiKey, info);
+      for (const { providerId, uiId } of OAUTH_UI_CONFIG) {
+        const info = statuses[providerId];
+        if (info) updateOAuthUI(uiId, info);
       }
       resolve();
     });
@@ -458,7 +475,7 @@ async function startOAuthLogin(uiKey, storeKey) {
 }
 
 async function doOAuthLogout(storeKey) {
-  const uiKey = Object.entries(OAUTH_KEY_MAP).find(([, v]) => v === storeKey)?.[0];
+  const uiKey = OAUTH_UI_CONFIG.find((entry) => entry.providerId === storeKey)?.uiId;
   const statusEl = document.getElementById(`status-${uiKey}`);
   chrome.runtime.sendMessage({ type: 'oauth_logout', provider: storeKey }, async () => {
     if (statusEl) statusEl.textContent = 'Logged out.';
@@ -469,7 +486,7 @@ async function doOAuthLogout(storeKey) {
 
 function handleOAuthResult(status) {
   const { provider, success, error, email } = status;
-  const uiKey = Object.entries(OAUTH_KEY_MAP).find(([, v]) => v === provider)?.[0];
+  const uiKey = OAUTH_UI_CONFIG.find((entry) => entry.providerId === provider)?.uiId;
   if (!uiKey) return;
   const statusEl = document.getElementById(`status-${uiKey}`);
   const loginBtn = document.getElementById(`login-${uiKey}`);

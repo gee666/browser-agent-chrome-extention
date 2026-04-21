@@ -10,6 +10,11 @@ import {
   formatDebugEntry, makeDebugFilename,
 } from '../lib/browser-agent-core/background/index.js';
 import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
+// TODO(public-api): importing from the package `src/` entry reaches across
+// the pi-browser-agent-bridge package boundary. The sub-library maintainers
+// should expose `createBridgeController` and `startBridge` from the package
+// entry point so the extension can depend on a stable public API rather than
+// internal file paths. Refactor is intentionally out of scope here.
 import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
 import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
 import {
@@ -17,6 +22,8 @@ import {
   isSettledByStatus,
   buildTaskResult,
   buildTaskResultFromRun,
+  throwIfCancelled,
+  TaskCancelledError,
 } from './task-lifecycle.js';
 
 const DEFAULT_INPUT_BACKEND = 'cdp';
@@ -55,6 +62,17 @@ function normalizeTaskError(error, fallbackCode = 'E_RUNTIME') {
 }
 
 function summarizeAgentHistory(agent) {
+  // TODO(public-api): AgentCore currently exposes no public history accessor,
+  // so we read the private `_history` field. browser-agent-core should add a
+  // public `getHistorySummary()` (or equivalent) and this function should
+  // call it. Refactor is intentionally out of scope here — this is a
+  // documented cross-boundary read, not a new API addition.
+  const historyFromPublicApi = typeof agent?.getHistorySummary === 'function'
+    ? agent.getHistorySummary()
+    : null;
+  if (historyFromPublicApi && Array.isArray(historyFromPublicApi.recentSteps)) {
+    return historyFromPublicApi;
+  }
   const history = Array.isArray(agent?._history) ? agent._history : [];
   const entries = history.slice(-8).map((step) => ({
     stepNumber: typeof step?.stepNumber === 'number' ? step.stepNumber : null,
@@ -207,23 +225,7 @@ async function startAgentTask({
 
   try {
     const config = await loadAgentConfig();
-    if (taskRun.cancelRequested || taskRun.settled) {
-      publishAgentStatus({
-        state: 'stopped',
-        message: 'Cancellation requested',
-        timestamp: Date.now(),
-        task,
-        iteration: 0,
-        maxIterations: 0,
-        url: null,
-        title: null,
-      });
-      settle(buildTaskResult(taskRun, 'stopped', {
-        cancelled: true,
-        message: 'Cancellation requested',
-      }));
-      return await taskRun.promise;
-    }
+    throwIfCancelled(taskRun, 'config load');
 
     let inputBackend = config.inputBackend;
     if (!inputBackend) {
@@ -236,7 +238,11 @@ async function startAgentTask({
       tabId: tabId ?? tab_id,
       useActiveTab: useActiveTab || use_active_tab,
     });
+    throwIfCancelled(taskRun, 'tab resolution');
+
     const bridge = await piBridgeRuntime.createAgentBrowserBridge(target.tabId);
+    throwIfCancelled(taskRun, 'bridge creation');
+
     await chrome.tabs.update(target.tabId, { active: true }).catch(() => {});
     if (url) {
       try {
@@ -244,7 +250,9 @@ async function startAgentTask({
       } catch (error) {
         throw createTaskError('E_NAV_TIMEOUT', error?.message || `Failed to navigate task tab to ${url}`, { url, tabId: target.tabId });
       }
+      throwIfCancelled(taskRun, 'initial navigation');
     }
+
     currentInputControl = createInputControl({ inputBackend, bridge, inspector: piBridgeRuntime.inspector });
     const executor = new ActionExecutor({ bridge, inputControl: currentInputControl });
     const runInputControl = currentInputControl;
@@ -253,12 +261,22 @@ async function startAgentTask({
 
     let lastStatus = null;
 
+    // Final cancellation gate before constructing / running the agent.
+    throwIfCancelled(taskRun, 'agent construction');
+
     currentAgent = new AgentCore({
       llm,
       bridge,
       executor,
       onStatus: (status) => {
         const terminalState = status.state;
+        // TODO(public-api): we copy the status into lastStatus and then mutate
+        // the original `status` passed in by AgentCore to map recoverable
+        // errors to a non-terminal 'thinking' state. This relies on the
+        // AgentCore callback contract allowing in-place mutation. The
+        // sub-library should expose a structured recoverable-error signal so
+        // this mutation is not needed. Refactor is intentionally out of scope
+        // here.
         lastStatus = { ...status };
 
         if (terminalState === 'error') {
@@ -315,26 +333,45 @@ async function startAgentTask({
         if (currentInputControl === runInputControl) currentInputControl = null;
       });
   } catch (error) {
-    const normalizedError = normalizeTaskError(error);
-    const errorStatus = {
-      state: 'error',
-      message: normalizedError.message,
-      timestamp: Date.now(),
-      task,
-      iteration: 0,
-      maxIterations: 0,
-      url: null,
-      title: null,
-      actionsCount: null,
-    };
-    publishAgentStatus(errorStatus);
-    const result = buildTaskResult(taskRun, 'error', {
-      message: normalizedError.message,
-      error: createTaskError(normalizedError.code, normalizedError.message, normalizedError.details),
-      finalStatus: errorStatus,
-      historySummary: summarizeAgentHistory(currentAgent),
-    });
-    settle(result);
+    if (error instanceof TaskCancelledError) {
+      const cancelStatus = {
+        state: 'stopped',
+        message: error.message,
+        timestamp: Date.now(),
+        task,
+        iteration: 0,
+        maxIterations: 0,
+        url: null,
+        title: null,
+      };
+      publishAgentStatus(cancelStatus);
+      settle(buildTaskResult(taskRun, 'stopped', {
+        cancelled: true,
+        message: error.message,
+        finalStatus: cancelStatus,
+      }));
+    } else {
+      const normalizedError = normalizeTaskError(error);
+      const errorStatus = {
+        state: 'error',
+        message: normalizedError.message,
+        timestamp: Date.now(),
+        task,
+        iteration: 0,
+        maxIterations: 0,
+        url: null,
+        title: null,
+        actionsCount: null,
+      };
+      publishAgentStatus(errorStatus);
+      const result = buildTaskResult(taskRun, 'error', {
+        message: normalizedError.message,
+        error: createTaskError(normalizedError.code, normalizedError.message, normalizedError.details),
+        finalStatus: errorStatus,
+        historySummary: summarizeAgentHistory(currentAgent),
+      });
+      settle(result);
+    }
   }
 
   return await taskRun.promise;
@@ -458,8 +495,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     return;
   }
 
-  // Validate state
-  if (state && pending.state && state !== pending.state) {
+  // Validate state. When a pending state was generated and stored, the
+  // returned state MUST match exactly. A callback with no state at all must
+  // fail closed — CSRF protection should not be skippable by omitting the
+  // parameter.
+  if (pending.state && state !== pending.state) {
     await notifyOAuthResult(pending.provider, { success: false, error: 'OAuth state mismatch (CSRF protection)' });
     return;
   }
