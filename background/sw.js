@@ -384,6 +384,7 @@ const piBridgeController = createBridgeController({
     return startBridge({
       enabled: config.enabled,
       url: config.url,
+      urls: config.urls,
       autoConnect: true,
       logger: console,
       helloPayload: {
@@ -438,8 +439,35 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (!bridge?.config?.enabled) {
     return;
   }
+  // Keepalive policy:
+  //   1. Send a probe to every currently-connected client.
+  //   2. Nudge every DISCONNECTED client to retry now (cancels its backoff
+  //      timer and attempts an immediate reconnect) — important when a new
+  //      pi-browser-agent instance comes up on a port we were watching but
+  //      had given up on for a few seconds.
+  //   3. Only reboot the whole bridge when there are no clients at all.
+  const probeFrame = { v: 1, kind: 'probe', id: `keepalive-${Date.now()}` };
+  let probedAny = false;
+  if (Array.isArray(bridge.clients) && bridge.clients.length > 0) {
+    for (const client of bridge.clients) {
+      if (client.isConnected) {
+        try { client.send(probeFrame); } catch (error) { console.warn('[sw] keepalive probe failed', { url: client.url, error }); }
+        probedAny = true;
+      } else if (typeof client.start === 'function') {
+        // Fire-and-forget; each client manages its own race / dedupe.
+        Promise.resolve(client.start()).catch((error) => {
+          console.warn('[sw] keepalive reconnect nudge failed', { url: client.url, error });
+        });
+      }
+    }
+    if (probedAny) return;
+    // No connected client right now, but per-client reconnect timers were
+    // already nudged above. Don't full-reboot the bridge — give the nudges
+    // a moment to land. The next alarm tick will reboot if still nothing.
+    return;
+  }
   if (bridge?.client?.isConnected) {
-    bridge.client.send({ v: 1, kind: 'probe', id: `keepalive-${Date.now()}` });
+    bridge.client.send(probeFrame);
     return;
   }
   void bootPiBridge();

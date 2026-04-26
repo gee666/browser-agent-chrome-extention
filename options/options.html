@@ -42,8 +42,9 @@
     </div>
 
     <div class="field-group">
-      <label for="piBridgeUrl">Bridge URL</label>
-      <input type="text" id="piBridgeUrl" placeholder="ws://127.0.0.1:7878">
+      <label for="piBridgeUrl">Bridge URLs</label>
+      <textarea id="piBridgeUrl" rows="4" placeholder="ws://127.0.0.1:7878&#10;ws://127.0.0.1:7879&#10;..."></textarea>
+      <p class="section-desc" style="margin-top:4px">One URL per line. Defaults scan ports 7878–7887 so multiple pi instances can run side by side.</p>
     </div>
 
     <hr class="section-divider">

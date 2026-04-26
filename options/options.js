@@ -317,7 +317,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const piBridgeUrlInput = document.getElementById('piBridgeUrl');
 
   piBridgeEnabledInput.checked = piBridgeConfig.enabled;
-  piBridgeUrlInput.value = piBridgeConfig.url || DEFAULT_PI_BRIDGE_CONFIG.url;
+  const piBridgeUrls = Array.isArray(piBridgeConfig.urls) && piBridgeConfig.urls.length > 0
+    ? piBridgeConfig.urls
+    : (DEFAULT_PI_BRIDGE_CONFIG.urls || [DEFAULT_PI_BRIDGE_CONFIG.url]);
+  piBridgeUrlInput.value = piBridgeUrls.join('\n');
 
   providerSel.value    = config.provider || 'openai';
   apiKeyInput.value    = config.apiKey   || '';
@@ -395,7 +398,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         useVision:      useVisionInput.checked,
         piBridgeConfig: normalizePiBridgeConfig({
           enabled: piBridgeEnabledInput.checked,
-          url: piBridgeUrlInput.value,
+          // Textarea allows one URL per line; normalize handles the parsing.
+          urls: piBridgeUrlInput.value,
         }),
       });
       saveConfirm.textContent = 'Saved ✓';
