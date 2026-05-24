@@ -21,6 +21,7 @@ const SERIAL_REQUEST_TYPES = [
   'browser_get_performance_metrics',
   'browser_evaluate_js',
   'browser_run_js',
+  'browser_create_tab',
   'browser_navigate',
   'browser_switch_tab',
   'browser_close_tab',
