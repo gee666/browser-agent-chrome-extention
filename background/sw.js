@@ -32,6 +32,47 @@ let currentAgent = null;
 let currentInputControl = null;
 let currentTaskRun = null;
 
+function getLocal(keys) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(keys, (data) => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve(data || {});
+    });
+  });
+}
+
+async function appendChatMessage(message) {
+  const data = await getLocal(['chatMessages']);
+  const chatMessages = Array.isArray(data.chatMessages) ? data.chatMessages : [];
+  const next = [
+    ...chatMessages,
+    {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+      ...message,
+    },
+  ].slice(-80);
+  await chrome.storage.local.set({ chatMessages: next });
+  chrome.runtime.sendMessage({ type: 'chat_messages', messages: next }).catch(() => {});
+  return next;
+}
+
+function buildTaskFromConversation(messages) {
+  const recent = (Array.isArray(messages) ? messages : []).slice(-24);
+  const transcript = recent
+    .filter((m) => ['user', 'assistant'].includes(m.role) && m.content)
+    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+    .join('\n\n');
+  const latest = [...recent].reverse().find((m) => m.role === 'user')?.content || '';
+  if (!transcript) return latest;
+  return (
+    `You are continuing an interactive browser-control chat. Use the full conversation context below.\n` +
+    `The latest user message is the task/follow-up to satisfy now; previous assistant messages are what you already reported.\n\n` +
+    `<conversation>\n${transcript}\n</conversation>\n\n` +
+    `<latest_user_message>\n${latest}\n</latest_user_message>`
+  );
+}
+
 const piBridgeRuntime = createPiBridgeRuntime({
   chromeApi: chrome,
   logger: console,
@@ -97,6 +138,24 @@ function summarizeAgentHistory(agent) {
     recentSteps: entries,
     text: lines.join('\n'),
   };
+}
+
+function appendTaskResultToChatOnce(taskRun, result) {
+  if (!taskRun || taskRun.chatFinalAppended || !result) return;
+  const finalState = result.state || result.status || result.finalStatus?.state;
+  if (!['done', 'error', 'stopped'].includes(finalState)) return;
+  taskRun.chatFinalAppended = true;
+  const isError = finalState === 'error';
+  const content = result.message || result.finalStatus?.message || (isError ? 'The task failed.' : 'Done.');
+  appendChatMessage({
+    role: 'assistant',
+    kind: isError ? 'error' : 'final',
+    content,
+    meta: {
+      state: finalState,
+      historySummary: result.historySummary || null,
+    },
+  }).catch((error) => console.warn('[sw] failed to append final chat message', error));
 }
 
 function stopCurrentTask() {
@@ -203,6 +262,7 @@ async function startAgentTask({
     reject: null,
     promise: null,
     finish: null,
+    chatFinalAppended: false,
   };
   taskRun.promise = new Promise((resolve, reject) => {
     taskRun.resolve = resolve;
@@ -214,6 +274,7 @@ async function startAgentTask({
     if (taskRun.settled) return taskRun.terminalResult;
     taskRun.settled = true;
     taskRun.terminalResult = result;
+    appendTaskResultToChatOnce(taskRun, result);
     if (currentTaskRun === taskRun) {
       currentTaskRun = null;
       currentAgent = null;
@@ -297,6 +358,11 @@ async function startAgentTask({
       useVision: (useVision ?? use_vision ?? config.useVision) !== false,
       debugLog,
     });
+
+    if (Array.isArray(taskRun.pendingSteers) && taskRun.pendingSteers.length > 0 && typeof currentAgent.addSteer === 'function') {
+      for (const steer of taskRun.pendingSteers) currentAgent.addSteer(steer);
+      taskRun.pendingSteers = [];
+    }
 
     currentAgent.run(task)
       .then((runResult) => {
@@ -588,6 +654,50 @@ function createProvider(config) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ── Agent control ────────────────────────────────────────────────────────────
+  if (message.type === 'chat_get') {
+    getLocal(['chatMessages', 'agentStatus'])
+      .then((data) => sendResponse({ messages: data.chatMessages || [], status: data.agentStatus || null }))
+      .catch((err) => sendResponse({ messages: [], status: null, error: err.message }));
+    return true;
+  }
+
+  if (message.type === 'chat_clear') {
+    chrome.storage.local.set({ chatMessages: [], agentStatus: { state: 'idle', timestamp: Date.now() } }, () => {
+      chrome.runtime.sendMessage({ type: 'chat_messages', messages: [] }).catch(() => {});
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  if (message.type === 'chat_send') {
+    const text = typeof message.message === 'string' ? message.message.trim() : '';
+    if (!text) {
+      sendResponse({ ok: false, error: 'Message is empty' });
+      return true;
+    }
+
+    (async () => {
+      const messages = await appendChatMessage({ role: 'user', kind: currentTaskRun ? 'steer' : 'message', content: text });
+
+      if (currentTaskRun) {
+        if (currentAgent && typeof currentAgent.addSteer === 'function') {
+          currentAgent.addSteer(text);
+        } else {
+          currentTaskRun.pendingSteers = [...(currentTaskRun.pendingSteers || []), text];
+        }
+        await appendChatMessage({ role: 'system', kind: 'steer-queued', content: 'Steer queued — the agent will see it on the next reasoning step.' });
+        sendResponse({ ok: true, queued: true, running: true });
+        return;
+      }
+
+      const task = buildTaskFromConversation(messages);
+      startAgentTask({ task, debugMode: !!message.debugMode, useActiveTab: true })
+        .catch((error) => console.warn('[sw] chat task failed', error));
+      sendResponse({ ok: true, started: true });
+    })().catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   if (message.type === 'start_task') {
     if (currentTaskRun) {
       sendResponse({

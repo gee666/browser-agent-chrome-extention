@@ -6,44 +6,53 @@
 </head>
 <body>
   <div id="app">
-    <div id="status-bar">
-      <span id="status-dot"></span>
-      <span id="status-text">Idle</span>
-    </div>
-
-    <div id="task-form">
-      <textarea id="task-input" placeholder="Describe what to do...&#10;e.g. Login to facebook.com as user@example.com" rows="4"></textarea>
-      <div id="form-actions">
-        <button id="run-btn">Run Task</button>
-        <button id="stop-btn" disabled>Stop</button>
+    <header class="topbar">
+      <div class="brand">
+        <div class="orb" aria-hidden="true"></div>
+        <div>
+          <div class="brand-title">Browser Agent</div>
+          <div id="status-bar" class="status-line">
+            <span id="status-dot"></span>
+            <span id="status-text">Idle</span>
+          </div>
+        </div>
       </div>
-      <div id="debug-row">
-        <label id="debug-label">
-          <input type="checkbox" id="debug-checkbox">
-          <span>🐛 Debug logging</span>
-        </label>
-        <a id="logs-link" href="#" title="Open log viewer">View Logs</a>
-      </div>
-    </div>
+      <nav class="toolbar" aria-label="Agent controls">
+        <button id="new-chat-btn" class="icon-btn" title="New chat">＋</button>
+        <button id="stop-btn" class="icon-btn danger" title="Stop agent" disabled>■</button>
+        <button id="logs-link" class="icon-btn" title="View logs">◈</button>
+        <button id="settings-link" class="icon-btn" title="Settings">⚙</button>
+      </nav>
+    </header>
 
-    <div id="progress-panel" hidden>
-      <div id="current-url"></div>
-      <div id="iteration-counter"></div>
-      <div id="last-action"></div>
-    </div>
+    <main id="chat-shell">
+      <div id="messages" aria-live="polite"></div>
 
-    <div id="result-panel" hidden>
-      <div id="result-message"></div>
-    </div>
+      <section id="activity-card" hidden>
+        <div class="activity-head">
+          <span class="spinner"></span>
+          <span id="activity-title">Working</span>
+          <span id="iteration-counter"></span>
+        </div>
+        <div id="activity-message"></div>
+        <div id="current-url"></div>
+      </section>
+    </main>
 
-    <div id="input-backend-indicator">
-      Input: <span id="input-backend-name">…</span>
-      <a id="input-backend-change" href="#">[change]</a>
-    </div>
+    <form id="composer">
+      <textarea id="task-input" placeholder="Ask the agent to use this browser…" rows="1"></textarea>
+      <button id="run-btn" type="submit" title="Send">➜</button>
+    </form>
 
-    <div id="footer">
-      <a id="settings-link" href="#">⚙ Settings</a>
-    </div>
+    <footer class="meta-strip">
+      <label id="debug-label" title="Save detailed reasoning logs">
+        <input type="checkbox" id="debug-checkbox">
+        <span>Debug</span>
+      </label>
+      <span class="divider"></span>
+      <span>Input <b id="input-backend-name">…</b></span>
+      <a id="input-backend-change" href="#">change</a>
+    </footer>
   </div>
   <script src="popup.js" type="module"></script>
 </body>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Agent Logs</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Browser Agent Logs</h1>
+      <p>Debug logs saved by the extension in browser private storage.</p>
+    </div>
+    <div class="actions">
+      <button id="refresh-btn" type="button">Refresh</button>
+      <button id="delete-all-btn" type="button" class="danger">Delete all</button>
+    </div>
+  </header>
+
+  <main>
+    <aside>
+      <div id="status" class="status">Loading logs…</div>
+      <ol id="log-list" class="log-list"></ol>
+    </aside>
+    <section class="viewer">
+      <h2 id="log-title">Select a log</h2>
+      <div id="meta" class="meta"></div>
+      <div id="screenshot"></div>
+      <pre id="content" class="content"></pre>
+    </section>
+  </main>
+
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>
