@@ -8,7 +8,7 @@ const MODEL_DEFAULTS = {
   ollama: 'llava',
   openrouter: 'openai/gpt-4o',
   nvidia: 'meta/llama-3.1-70b-instruct',
-  'openai-codex': 'gpt-4o',
+  'openai-codex': 'gpt-5.6-sol',
   'anthropic-oauth': 'claude-opus-4-5',
   'gemini-cli': 'gemini-2.0-flash',
 };
@@ -16,6 +16,7 @@ const MODEL_DEFAULTS = {
 const SHOW_BASE_URL = ['ollama', 'openrouter', 'nvidia'];
 const NEEDS_API_KEY = ['openai', 'anthropic', 'openrouter', 'nvidia'];
 const OAUTH_PROVIDERS = ['openai-codex', 'anthropic-oauth', 'gemini-cli'];
+const REASONING_PROVIDERS = ['openai-codex'];
 
 // Normalized OAuth UI config.
 //
@@ -44,9 +45,11 @@ const OAUTH_KEY_MAP = Object.fromEntries(OAUTH_UI_CONFIG.map((entry) => [entry.u
 function updateUIForProvider(provider) {
   const apiKeyGroup = document.getElementById('api-key-group');
   const baseUrlGroup = document.getElementById('base-url-group');
+  const reasoningGroup = document.getElementById('reasoning-level-group');
   const isOAuth = OAUTH_PROVIDERS.includes(provider);
   if (apiKeyGroup) apiKeyGroup.style.display = (!isOAuth && NEEDS_API_KEY.includes(provider)) ? '' : 'none';
   if (baseUrlGroup) baseUrlGroup.style.display = SHOW_BASE_URL.includes(provider) ? '' : 'none';
+  if (reasoningGroup) reasoningGroup.style.display = REASONING_PROVIDERS.includes(provider) ? '' : 'none';
 }
 
 // ── Model fetching ────────────────────────────────────────────────────────────
@@ -55,7 +58,7 @@ function updateUIForProvider(provider) {
 
 const HARDCODED_MODELS = {
   'openai': ["o4-mini","o4-mini-deep-research","o3","o3-pro","o3-mini","o3-deep-research","o1","o1-pro","gpt-5","gpt-5-pro","gpt-5-mini","gpt-5-nano","gpt-5-codex","gpt-5-chat-latest","gpt-5.1","gpt-5.1-codex","gpt-5.1-codex-max","gpt-5.1-codex-mini","gpt-5.1-chat-latest","gpt-5.2","gpt-5.2-codex","gpt-5.2-pro","gpt-5.2-chat-latest","gpt-5.3-codex","gpt-5.3-codex-spark","gpt-5.4","gpt-5.4-mini","gpt-5.4-nano","gpt-5.4-pro","gpt-4o","gpt-4o-2024-11-20","gpt-4o-2024-08-06","gpt-4o-2024-05-13","gpt-4o-mini","gpt-4.1","gpt-4.1-mini","gpt-4.1-nano","gpt-4-turbo","gpt-4","codex-mini-latest"],
-  'openai-codex': ["gpt-5.1","gpt-5.1-codex","gpt-5.1-codex-max","gpt-5.1-codex-mini","gpt-5.2","gpt-5.2-codex","gpt-5.3-codex","gpt-5.3-codex-spark","gpt-5.4","gpt-5.4-mini"],
+  'openai-codex': ["gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna"],
   'anthropic': ["claude-opus-4-6","claude-opus-4-5","claude-opus-4-5-20251101","claude-opus-4-1","claude-opus-4-1-20250805","claude-opus-4-0","claude-opus-4-20250514","claude-sonnet-4-6","claude-sonnet-4-5","claude-sonnet-4-5-20250929","claude-sonnet-4-0","claude-sonnet-4-20250514","claude-haiku-4-5","claude-haiku-4-5-20251001","claude-3-7-sonnet-latest","claude-3-7-sonnet-20250219","claude-3-5-sonnet-20241022","claude-3-5-sonnet-20240620","claude-3-5-haiku-latest","claude-3-5-haiku-20241022","claude-3-opus-20240229","claude-3-sonnet-20240229","claude-3-haiku-20240307"],
   'anthropic-oauth': ["claude-opus-4-6","claude-opus-4-5","claude-opus-4-5-20251101","claude-opus-4-1","claude-opus-4-1-20250805","claude-opus-4-0","claude-opus-4-20250514","claude-sonnet-4-6","claude-sonnet-4-5","claude-sonnet-4-5-20250929","claude-sonnet-4-0","claude-sonnet-4-20250514","claude-haiku-4-5","claude-haiku-4-5-20251001","claude-3-7-sonnet-latest","claude-3-7-sonnet-20250219","claude-3-5-sonnet-20241022","claude-3-5-haiku-latest","claude-3-haiku-20240307"],
   'gemini-cli': ["gemini-3.1-pro-preview","gemini-3-pro-preview","gemini-3-flash-preview","gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash"],
@@ -200,7 +203,10 @@ async function loadModels(provider, apiKey, baseUrl, savedModel) {
       if (statusEl && !statusEl.textContent.includes('⚠')) statusEl.textContent = '';
     }, 4000);
 
-    populateModelSelect(models, savedModel || MODEL_DEFAULTS[provider] || '');
+    const selectedModel = provider === 'openai-codex' && !models.includes(savedModel)
+      ? MODEL_DEFAULTS[provider]
+      : (savedModel || MODEL_DEFAULTS[provider] || '');
+    populateModelSelect(models, selectedModel);
   } catch (err) {
     if (seq !== _modelFetchSeq) return;
     if (statusEl) statusEl.textContent = `⚠ ${err.message}`;
@@ -270,7 +276,7 @@ function setStorage(items) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'inputBackend'];
+  const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'inputBackend', 'reasoningLevel'];
   const [config, piBridgeConfig] = await Promise.all([
     new Promise(r => chrome.storage.local.get(keys, r)),
     readPiBridgeConfig(chrome.storage.local),
@@ -310,6 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const baseUrlInput = document.getElementById('baseUrl');
   const maxIterInput = document.getElementById('maxIterations');
   const useVisionInput = document.getElementById('useVision');
+  const reasoningLevelInput = document.getElementById('reasoningLevel');
   const saveBtn      = document.getElementById('save-btn');
   const saveConfirm  = document.getElementById('save-confirm');
   const refreshBtn   = document.getElementById('model-refresh-btn');
@@ -327,6 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   baseUrlInput.value   = config.baseUrl  || '';
   maxIterInput.value   = config.maxIterations || 20;
   useVisionInput.checked = config.useVision !== false;
+  reasoningLevelInput.value = config.reasoningLevel || 'medium';
 
   updateUIForProvider(providerSel.value);
 
@@ -396,6 +404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         baseUrl:        baseUrlInput.value.trim(),
         maxIterations:  parseInt(maxIterInput.value, 10) || 20,
         useVision:      useVisionInput.checked,
+        reasoningLevel: reasoningLevelInput.value,
         piBridgeConfig: normalizePiBridgeConfig({
           enabled: piBridgeEnabledInput.checked,
           // Textarea allows one URL per line; normalize handles the parsing.

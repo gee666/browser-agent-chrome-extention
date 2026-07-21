@@ -24,6 +24,7 @@ import path from 'node:path';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OPTIONS_JS_PATH = path.join(HERE, 'options.js');
 const OPTIONS_HTML_PATH = path.join(HERE, 'options.html');
+const BACKGROUND_JS_PATH = path.join(HERE, '..', 'background', 'sw.js');
 
 const EXPECTED_ENTRIES = [
   { providerId: 'openai-codex', uiId: 'openai-codex' },
@@ -89,6 +90,26 @@ test('Anthropic OAuth controls target ui prefix "anthropic" (regression guard)',
 // jsdom-free DOM-wiring sanity check: build a minimal DOM stub that records
 // which (elementId, event, handler) triples get attached, then drive the
 // wiring loop the same way options.js does.
+test('OpenAI OAuth exposes only the modern models and a reasoning selector', async () => {
+  const [source, html, background] = await Promise.all([
+    readFile(OPTIONS_JS_PATH, 'utf8'),
+    readFile(OPTIONS_HTML_PATH, 'utf8'),
+    readFile(BACKGROUND_JS_PATH, 'utf8'),
+  ]);
+
+  assert.match(
+    source,
+    /['"]openai-codex['"]:\s*\[\s*['"]gpt-5\.6-sol['"],\s*['"]gpt-5\.6-terra['"],\s*['"]gpt-5\.6-luna['"]\s*\]/,
+  );
+  assert.match(html, /id=["']reasoningLevel["']/);
+  for (const level of ['low', 'medium', 'high', 'xhigh']) {
+    assert.match(html, new RegExp(`value=["']${level}["']`));
+  }
+  assert.match(source, /reasoningLevel:\s*reasoningLevelInput\.value/);
+  assert.match(source, /provider === ['"]openai-codex['"] && !models\.includes\(savedModel\)/);
+  assert.match(background, /OpenAICodexOAuthProvider\(\{\s*model:\s*config\.model,\s*reasoningLevel:\s*config\.reasoningLevel\s*\}\)/);
+});
+
 test('wiring loop attaches listeners to the correct anthropic DOM ids', async () => {
   const attached = [];
   const dom = new Map();

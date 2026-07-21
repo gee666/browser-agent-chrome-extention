@@ -218,7 +218,7 @@ function createDebugLogger(isDebug) {
 async function loadAgentConfig() {
   return await new Promise((resolve, reject) => {
     chrome.storage.local.get(
-      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend'],
+      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend', 'reasoningLevel'],
       (config) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
@@ -640,7 +640,7 @@ async function notifyOAuthResult(provider, result) {
 
 function createProvider(config) {
   switch (config.provider) {
-    case 'openai-codex':    return new OpenAICodexOAuthProvider({ model: config.model });
+    case 'openai-codex':    return new OpenAICodexOAuthProvider({ model: config.model, reasoningLevel: config.reasoningLevel });
     case 'anthropic-oauth': return new AnthropicOAuthProvider({ model: config.model });
     case 'gemini-cli':      return new GeminiOAuthProvider({ model: config.model || 'gemini-2.0-flash' });
     case 'anthropic':       return new AnthropicProvider({ apiKey: config.apiKey, model: config.model });
