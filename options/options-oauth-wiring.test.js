@@ -90,6 +90,26 @@ test('Anthropic OAuth controls target ui prefix "anthropic" (regression guard)',
 // jsdom-free DOM-wiring sanity check: build a minimal DOM stub that records
 // which (elementId, event, handler) triples get attached, then drive the
 // wiring loop the same way options.js does.
+test('hardcoded model dropdown includes GPT 5.5 families', async () => {
+  const source = await readFile(OPTIONS_JS_PATH, 'utf8');
+
+  for (const model of [
+    'gpt-5.5',
+    'gpt-5.5-pro',
+    'gpt-5.5-mini',
+    'gpt-5.5-nano',
+    'gpt-5.5-codex',
+    'gpt-5.5-chat-latest',
+    'openai/gpt-5.5',
+    'openai/gpt-5.5-pro',
+    'openai/gpt-5.5-mini',
+    'openai/gpt-5.5-nano',
+    'openai/gpt-5.5-codex',
+  ]) {
+    assert.match(source, new RegExp(`['"]${model.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`));
+  }
+});
+
 test('OpenAI OAuth exposes only the modern models and a reasoning selector', async () => {
   const [source, html, background] = await Promise.all([
     readFile(OPTIONS_JS_PATH, 'utf8'),
