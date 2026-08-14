@@ -17,6 +17,7 @@ import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.
 // internal file paths. Refactor is intentionally out of scope here.
 import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
 import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
+import { createKeepalivePump } from './pi-bridge-keepalive.js';
 import {
   createTaskError,
   isSettledByStatus,
@@ -473,9 +474,115 @@ const piBridgeController = createBridgeController({
 
 const PI_BRIDGE_RECONNECT_ALARM = 'pi-bridge-reconnect';
 
+// MV3 service workers are torn down after ~30s of inactivity. Timers do NOT
+// keep the worker alive by themselves, but *received* WebSocket messages reset
+// the idle timer (Chrome 116+). The broker replies to every `probe` frame, so
+// sending a probe over each live socket on a sub-30s cadence produces a
+// received message that keeps the worker — and therefore the bridge socket —
+// alive continuously. chrome.alarms cannot fire faster than every 30s (it
+// clamps anything smaller), which is too slow to win this race on its own, so
+// the alarm is only a cold-start backstop that wakes a fully torn-down worker.
+const PI_BRIDGE_KEEPALIVE_INTERVAL_MS = 20_000;
+
+// A connected client must produce a received frame at least once per keepalive
+// cycle, because every cycle sends a `probe` and the broker always answers it.
+// Two and a half missed cycles means the socket is a zombie: OPEN on our side,
+// dead on the wire. Force a reconnect rather than trusting readyState.
+const PI_BRIDGE_ZOMBIE_TIMEOUT_MS = PI_BRIDGE_KEEPALIVE_INTERVAL_MS * 2.5;
+
+// If wall-clock jumped far more than one interval, the machine was suspended or
+// the worker was frozen. Loopback sockets can survive that as half-open zombies,
+// so the pump logs it and re-probes everything (see pi-bridge-keepalive.js for
+// why it does not pre-emptively reconnect).
+const PI_BRIDGE_WAKE_GAP_MS = PI_BRIDGE_KEEPALIVE_INTERVAL_MS * 3;
+
+// Rebuilding the bridge every 20s would also re-create the backstop alarm on
+// every pump and thereby reset its 30s period forever, so the no-client reboot
+// gets its own, slower cadence.
+const PI_BRIDGE_EMPTY_REBOOT_INTERVAL_MS = 60_000;
+
+let piBridgeKeepaliveTimer = null;
+let piBridgeLastEmptyRebootAt = 0;
+
+// All liveness decisions live in a chrome-free module so they are unit-testable.
+const piBridgeKeepalivePump = createKeepalivePump({
+  intervalMs: PI_BRIDGE_KEEPALIVE_INTERVAL_MS,
+  zombieTimeoutMs: PI_BRIDGE_ZOMBIE_TIMEOUT_MS,
+  wakeGapMs: PI_BRIDGE_WAKE_GAP_MS,
+  logger: console,
+});
+
+// Run one keepalive/reconnect cycle. This function owns only the chrome-coupled
+// parts — reading the current bridge/clients and rebooting a client-less bridge
+// — and delegates every liveness decision to the pure pump above.
+// Returns true if at least one connected client was probed.
+function pumpBridgeKeepalive() {
+  const bridge = piBridgeController.getCurrentBridge();
+  if (!bridge || bridge.config?.enabled === false) return false;
+
+  const clients = Array.isArray(bridge.clients) && bridge.clients.length > 0
+    ? bridge.clients
+    : (bridge.client ? [bridge.client] : []);
+
+  const now = Date.now();
+  if (clients.length === 0) {
+    if (now - piBridgeLastEmptyRebootAt < PI_BRIDGE_EMPTY_REBOOT_INTERVAL_MS) return false;
+    piBridgeLastEmptyRebootAt = now;
+    void bootPiBridge();
+    return false;
+  }
+
+  return piBridgeKeepalivePump.pump({ clients, now }).probedAny;
+}
+
+// Self-rescheduling sub-30s keepalive loop. It runs entirely while the worker
+// is alive; when the worker is eventually torn down the timer dies with it and
+// the alarm (or any other event) restarts the worker, which calls bootPiBridge
+// and starts the loop again. The loop stops itself if the bridge is disabled.
+function startPiBridgeKeepaliveLoop() {
+  if (piBridgeKeepaliveTimer) return;
+  // Forget the previous cadence: a stale timestamp from before an idle/disabled
+  // stretch would make the first pump see a huge "gap".
+  piBridgeKeepalivePump.reset();
+  const tick = () => {
+    piBridgeKeepaliveTimer = null;
+    const bridge = piBridgeController.getCurrentBridge();
+    if (bridge && bridge.config?.enabled === false) {
+      // Disabled — stop pinging until it is re-enabled (boot restarts us).
+      piBridgeKeepalivePump.reset();
+      return;
+    }
+    try {
+      pumpBridgeKeepalive();
+    } finally {
+      piBridgeKeepaliveTimer = setTimeout(tick, PI_BRIDGE_KEEPALIVE_INTERVAL_MS);
+      piBridgeKeepaliveTimer.unref?.();
+    }
+  };
+  piBridgeKeepaliveTimer = setTimeout(tick, PI_BRIDGE_KEEPALIVE_INTERVAL_MS);
+  piBridgeKeepaliveTimer.unref?.();
+}
+
+function stopPiBridgeKeepaliveLoop() {
+  if (piBridgeKeepaliveTimer) {
+    clearTimeout(piBridgeKeepaliveTimer);
+    piBridgeKeepaliveTimer = null;
+  }
+  piBridgeKeepalivePump.reset();
+}
+
 async function ensurePiBridgeReconnectAlarm() {
   try {
-    await chrome.alarms.create(PI_BRIDGE_RECONNECT_ALARM, { periodInMinutes: 0.4 });
+    // chrome.alarms.create REPLACES an existing alarm of the same name and
+    // restarts its period, so re-creating it on every boot would let a frequent
+    // boot cadence starve the cold-start backstop entirely. Only create it when
+    // it is actually missing.
+    const existing = await chrome.alarms.get(PI_BRIDGE_RECONNECT_ALARM);
+    if (existing) return;
+    // 0.5 min (30s) is the smallest period MV3 honours; asking for less just
+    // gets clamped (and logs a warning). This alarm is only a cold-start
+    // backstop — the sub-30s keepalive loop keeps a live worker connected.
+    await chrome.alarms.create(PI_BRIDGE_RECONNECT_ALARM, { periodInMinutes: 0.5 });
   } catch (error) {
     console.warn('[sw] failed to schedule pi bridge reconnect alarm', error);
   }
@@ -485,7 +592,13 @@ async function bootPiBridge() {
   try {
     await ensurePiBridgeReconnectAlarm();
     const bridge = await piBridgeController.refreshFromStorage();
-    await piBridgeRuntime.setEnabled(bridge?.config?.enabled !== false);
+    const enabled = bridge?.config?.enabled !== false;
+    await piBridgeRuntime.setEnabled(enabled);
+    if (enabled) {
+      startPiBridgeKeepaliveLoop();
+    } else {
+      stopPiBridgeKeepaliveLoop();
+    }
   } catch (error) {
     console.error('[sw] pi bridge startup failed', error);
   }
@@ -501,42 +614,22 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== PI_BRIDGE_RECONNECT_ALARM) return;
+  // The alarm may have just woken a cold-started worker. Make sure the in-worker
+  // keepalive loop is running again, then pump one cycle immediately so we
+  // reconnect without waiting a full keepalive interval.
   const bridge = piBridgeController.getCurrentBridge();
-  if (!bridge?.config?.enabled) {
+  if (!bridge) {
+    // Worker restarted but the async bootPiBridge() kicked off at module load
+    // has not finished yet (or failed). Ensure it runs.
+    void bootPiBridge();
     return;
   }
-  // Keepalive policy:
-  //   1. Send a probe to every currently-connected client.
-  //   2. Nudge every DISCONNECTED client to retry now (cancels its backoff
-  //      timer and attempts an immediate reconnect) — important when a new
-  //      pi-browser-agent instance comes up on a port we were watching but
-  //      had given up on for a few seconds.
-  //   3. Only reboot the whole bridge when there are no clients at all.
-  const probeFrame = { v: 1, kind: 'probe', id: `keepalive-${Date.now()}` };
-  let probedAny = false;
-  if (Array.isArray(bridge.clients) && bridge.clients.length > 0) {
-    for (const client of bridge.clients) {
-      if (client.isConnected) {
-        try { client.send(probeFrame); } catch (error) { console.warn('[sw] keepalive probe failed', { url: client.url, error }); }
-        probedAny = true;
-      } else if (typeof client.start === 'function') {
-        // Fire-and-forget; each client manages its own race / dedupe.
-        Promise.resolve(client.start()).catch((error) => {
-          console.warn('[sw] keepalive reconnect nudge failed', { url: client.url, error });
-        });
-      }
-    }
-    if (probedAny) return;
-    // No connected client right now, but per-client reconnect timers were
-    // already nudged above. Don't full-reboot the bridge — give the nudges
-    // a moment to land. The next alarm tick will reboot if still nothing.
+  if (bridge.config?.enabled === false) {
+    stopPiBridgeKeepaliveLoop();
     return;
   }
-  if (bridge?.client?.isConnected) {
-    bridge.client.send(probeFrame);
-    return;
-  }
-  void bootPiBridge();
+  startPiBridgeKeepaliveLoop();
+  pumpBridgeKeepalive();
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
