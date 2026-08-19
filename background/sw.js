@@ -160,21 +160,38 @@ function appendTaskResultToChatOnce(taskRun, result) {
 }
 
 function stopCurrentTask() {
-  const hadRunningTask = !!currentTaskRun;
-  if (currentTaskRun) currentTaskRun.cancelRequested = true;
+  const taskRun = currentTaskRun;
+  const hadRunningTask = !!taskRun;
+  if (taskRun) taskRun.cancelRequested = true;
+
+  // Abort reasoning and native input first. AgentCore now races every long
+  // await (including LLM calls and waits) against this abort, while the input
+  // bridge cancels any in-flight CDP key sequence.
   if (currentAgent) currentAgent.stop();
   if (currentInputControl) {
     currentInputControl.abort();
     currentInputControl = null;
   }
-  currentAgent = null;
 
   const status = {
-    state: hadRunningTask ? 'stopping' : 'stopped', timestamp: Date.now(),
-    task: hadRunningTask ? currentTaskRun?.task || null : null,
+    state: 'stopped',
+    message: hadRunningTask ? 'Task stopped by user' : null,
+    timestamp: Date.now(),
+    task: taskRun?.task || null,
     iteration: 0, maxIterations: 0, url: null, title: null,
   };
   publishAgentStatus(status);
+
+  // Settle browser_run_task immediately even if cancellation happened during
+  // startup or an underlying browser/LLM API takes time to unwind.
+  if (taskRun && typeof taskRun.finish === 'function') {
+    taskRun.finish(buildTaskResult(taskRun, 'stopped', {
+      cancelled: true,
+      message: status.message,
+      finalStatus: status,
+      historySummary: summarizeAgentHistory(currentAgent),
+    }));
+  }
   return status;
 }
 
@@ -264,6 +281,7 @@ async function startAgentTask({
     promise: null,
     finish: null,
     chatFinalAppended: false,
+    executionStarted: false,
   };
   taskRun.promise = new Promise((resolve, reject) => {
     taskRun.resolve = resolve;
@@ -276,10 +294,9 @@ async function startAgentTask({
     taskRun.settled = true;
     taskRun.terminalResult = result;
     appendTaskResultToChatOnce(taskRun, result);
-    if (currentTaskRun === taskRun) {
-      currentTaskRun = null;
-      currentAgent = null;
-    }
+    // Resolving the RPC and releasing execution ownership are intentionally
+    // separate. Stop returns immediately, but a replacement task remains busy
+    // until the old run has unwound and detached its input session.
     taskRun.resolve(result);
     return result;
   };
@@ -326,7 +343,7 @@ async function startAgentTask({
     // Final cancellation gate before constructing / running the agent.
     throwIfCancelled(taskRun, 'agent construction');
 
-    currentAgent = new AgentCore({
+    const runAgent = new AgentCore({
       llm,
       bridge,
       executor,
@@ -351,7 +368,7 @@ async function startAgentTask({
           settle(buildTaskResult(taskRun, terminalState, {
             message: status.message || null,
             finalStatus: lastStatus,
-            historySummary: summarizeAgentHistory(currentAgent),
+            historySummary: summarizeAgentHistory(runAgent),
           }));
         }
       },
@@ -359,17 +376,19 @@ async function startAgentTask({
       useVision: (useVision ?? use_vision ?? config.useVision) !== false,
       debugLog,
     });
+    currentAgent = runAgent;
 
-    if (Array.isArray(taskRun.pendingSteers) && taskRun.pendingSteers.length > 0 && typeof currentAgent.addSteer === 'function') {
-      for (const steer of taskRun.pendingSteers) currentAgent.addSteer(steer);
+    if (Array.isArray(taskRun.pendingSteers) && taskRun.pendingSteers.length > 0 && typeof runAgent.addSteer === 'function') {
+      for (const steer of taskRun.pendingSteers) runAgent.addSteer(steer);
       taskRun.pendingSteers = [];
     }
 
-    currentAgent.run(task)
+    taskRun.executionStarted = true;
+    runAgent.run(task)
       .then((runResult) => {
         const result = {
           ...buildTaskResultFromRun(taskRun, { runResult, lastStatus }),
-          historySummary: summarizeAgentHistory(currentAgent),
+          historySummary: summarizeAgentHistory(runAgent),
         };
         if (result.finalStatus) publishAgentStatus(result.finalStatus);
         settle(result);
@@ -386,7 +405,7 @@ async function startAgentTask({
           message: normalizedError.message,
           error: createTaskError(normalizedError.code, normalizedError.message, normalizedError.details),
           finalStatus: errorStatus,
-          historySummary: summarizeAgentHistory(currentAgent),
+          historySummary: summarizeAgentHistory(runAgent),
         }));
       })
       .finally(() => {
@@ -398,6 +417,8 @@ async function startAgentTask({
           console.warn('[sw] inputControl.disconnect() threw:', e);
         }
         if (currentInputControl === runInputControl) currentInputControl = null;
+        if (currentAgent === runAgent) currentAgent = null;
+        if (currentTaskRun === taskRun) currentTaskRun = null;
       });
   } catch (error) {
     if (error instanceof TaskCancelledError) {
@@ -439,6 +460,13 @@ async function startAgentTask({
       });
       settle(result);
     }
+  }
+
+  // Startup failures/cancellation have no AgentCore .finally() to release the
+  // slot. Once that pipeline has unwound it is safe to accept another task.
+  if (!taskRun.executionStarted && taskRun.settled) {
+    if (currentTaskRun === taskRun) currentTaskRun = null;
+    currentAgent = null;
   }
 
   return await taskRun.promise;
