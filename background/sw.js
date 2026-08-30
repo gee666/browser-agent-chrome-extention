@@ -18,6 +18,7 @@ import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.
 import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
 import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
 import { createKeepalivePump } from './pi-bridge-keepalive.js';
+import { createPiBridgeReconciler } from './pi-bridge-reconciler.js';
 import {
   createTaskError,
   isSettledByStatus,
@@ -616,21 +617,27 @@ async function ensurePiBridgeReconnectAlarm() {
   }
 }
 
-async function bootPiBridge() {
+async function clearPiBridgeReconnectAlarm() {
   try {
-    await ensurePiBridgeReconnectAlarm();
-    const bridge = await piBridgeController.refreshFromStorage();
-    const enabled = bridge?.config?.enabled !== false;
-    await piBridgeRuntime.setEnabled(enabled);
-    if (enabled) {
-      startPiBridgeKeepaliveLoop();
-    } else {
-      stopPiBridgeKeepaliveLoop();
-    }
+    await chrome.alarms.clear(PI_BRIDGE_RECONNECT_ALARM);
   } catch (error) {
-    console.error('[sw] pi bridge startup failed', error);
+    console.warn('[sw] failed to clear pi bridge reconnect alarm', error);
   }
 }
+
+// Serialize the entire refresh/runtime/alarm/keepalive reconciliation, not just
+// the controller refresh. Calls made while one pass is running are coalesced
+// into one follow-up pass, so a superseded null refresh cannot toggle runtime
+// state or create an alarm from an assumed default.
+const bootPiBridge = createPiBridgeReconciler({
+  refreshBridge: () => piBridgeController.refreshFromStorage(),
+  setRuntimeEnabled: (enabled) => piBridgeRuntime.setEnabled(enabled),
+  ensureReconnectAlarm: ensurePiBridgeReconnectAlarm,
+  clearReconnectAlarm: clearPiBridgeReconnectAlarm,
+  startKeepaliveLoop: startPiBridgeKeepaliveLoop,
+  stopKeepaliveLoop: stopPiBridgeKeepaliveLoop,
+  logger: console,
+});
 
 chrome.runtime.onStartup.addListener(() => {
   void bootPiBridge();
@@ -653,7 +660,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return;
   }
   if (bridge.config?.enabled === false) {
-    stopPiBridgeKeepaliveLoop();
+    // Reconcile through the same serialized path as storage/startup changes.
+    // A direct clear here could race an in-flight enable pass that just found
+    // the alarm and leave the newly enabled bridge without its backstop.
+    void bootPiBridge();
     return;
   }
   startPiBridgeKeepaliveLoop();
