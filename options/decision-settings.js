@@ -6,6 +6,7 @@ export const DECISION_DEFAULTS = Object.freeze({
   jevBaseUrl: 'http://localhost:8765',
   jevApiKey: '',
   jevModel: 'jev-latest',
+  jevCacheMode: 'context',
   jevHeaders: Object.freeze({}),
   jevRequestParams: Object.freeze({}),
   jevTimeoutMs: 1200000,
@@ -76,29 +77,21 @@ export function validateDecisionSettings(values) {
   if (!jevModel || /[\x00-\x1f\x7f]/.test(jevModel)) {
     invalid('jevModel', 'Enter a Jev model name without control characters.');
   }
+  const jevCacheMode = values.jevCacheMode;
+  if (!['server', 'none', 'options', 'context'].includes(jevCacheMode)) {
+    invalid('jevCacheMode', 'Choose Server default, None, Options, or Context cache mode.');
+  }
   const helperModel = values.helperModel.trim();
   if (/[\x00-\x1f\x7f]/.test(helperModel)) {
     invalid('helperModel', 'Helper model cannot contain control characters.');
   }
   const jevHeaders = jsonObject(values.jevHeaders, 'jevHeaders', 'Jev headers');
-  const headerNames = new Set();
   // Use the runtime's header rules instead of maintaining a separate reserved-name
   // regex or control-character list. Do not forward its error text to the UI.
   try {
     normalizeJevConfig({ headers: jevHeaders });
   } catch {
     invalid('jevHeaders', 'Jev headers contain an invalid or reserved name or value.');
-  }
-  for (const [name, value] of Object.entries(jevHeaders)) {
-    const lowerName = name.toLowerCase();
-    if (headerNames.has(lowerName)) {
-      invalid('jevHeaders', 'Jev header names must be unique, ignoring case.');
-    }
-    headerNames.add(lowerName);
-    // Fetch header values are byte strings. Core owns name/type/control checks.
-    if (/[^\x00-\xff]/.test(value)) {
-      invalid('jevHeaders', 'Jev header values must use HTTP-compatible characters.');
-    }
   }
   const jevRequestParams = jsonObject(values.jevRequestParams, 'jevRequestParams', 'Jev request parameters');
   if (['state', 'questions', 'images', 'model'].some(key => Object.hasOwn(jevRequestParams, key))) {
@@ -114,7 +107,7 @@ export function validateDecisionSettings(values) {
     invalid('jevFallbackEnabled', 'Choose whether to allow LLM fallback.');
   }
   return {
-    decisionMode, jevBaseUrl, jevApiKey, jevModel, jevHeaders,
+    decisionMode, jevBaseUrl, jevApiKey, jevModel, jevCacheMode, jevHeaders,
     jevRequestParams, jevTimeoutMs, jevFallbackEnabled: values.jevFallbackEnabled, helperModel,
   };
 }
@@ -124,6 +117,7 @@ export function toJevConnectionConfig(settings) {
     baseUrl: settings.jevBaseUrl,
     apiKey: settings.jevApiKey,
     model: settings.jevModel,
+    cacheMode: settings.jevCacheMode ?? DECISION_DEFAULTS.jevCacheMode,
     headers: settings.jevHeaders,
     requestParams: settings.jevRequestParams,
     timeoutMs: settings.jevTimeoutMs,

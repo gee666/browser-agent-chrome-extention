@@ -1,6 +1,6 @@
 // Shared storage-to-core mapping. Credentials remain in chrome.storage.local.
 export const DECISION_CONFIG_KEYS = [
-  'decisionMode', 'jevBaseUrl', 'jevApiKey', 'jevModel', 'jevHeaders',
+  'decisionMode', 'jevBaseUrl', 'jevApiKey', 'jevModel', 'jevCacheMode', 'jevHeaders',
   'jevRequestParams', 'jevTimeoutMs', 'jevFallbackEnabled', 'helperModel',
 ];
 
@@ -13,6 +13,7 @@ export function decisionOptions(config, createProvider, llm) {
       baseUrl: config.jevBaseUrl || 'http://localhost:8765',
       apiKey: config.jevApiKey || '',
       model: config.jevModel || 'jev-latest',
+      cacheMode: config.jevCacheMode ?? 'context',
       headers: config.jevHeaders ?? {},
       requestParams: config.jevRequestParams ?? {},
       timeoutMs: config.jevTimeoutMs ?? 1200000,

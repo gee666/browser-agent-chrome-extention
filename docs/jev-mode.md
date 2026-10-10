@@ -14,7 +14,8 @@ Open extension Settings. Keep the normal provider configured and authenticated; 
 - Endpoint: API origin, `/v1`, or full `/v1/systemone` URL.
 - API key: stored in `chrome.storage.local` alongside existing credentials, not in the repository.
 - Model: `jev-latest` by default.
-- Headers and request parameters: JSON objects. Credentials belong in the API-key field. Reserved request fields and browser-controlled headers are rejected.
+- AutoJev cache mode: `context` by default, including existing settings without `jevCacheMode`. `options` uses the options-first cache; `none` disables reuse; `server` omits `X-AutoJev-Cache-Mode`. Explicit modes override the retained legacy `X-AutoJev-Prefix-Cache` header on AutoJev; `server` leaves that legacy header effective. Image requests may bypass caching. The connection test uses the selected mode without saving. Other saved settings stay unchanged.
+- Headers and request parameters: JSON objects. Credentials belong in the API-key field. Reserved request fields are rejected. Header names are checked case-insensitively; browser-controlled headers and custom `X-AutoJev-Cache-Mode` headers are reserved. Use the selector for cache mode.
 - Timeout: 1,200,000 ms by default, matching local AutoJev's recommendation. Stop cancels agent requests rather than waiting for this timeout.
 - Fallback: use the configured normal LLM on unavailable, invalid, or over-budget Jev classification.
 - Helper model: blank reuses the main model/provider/authentication. For a different provider, use the main provider settings; this field only overrides the model name.

@@ -43,7 +43,7 @@ function init(stored = {}, runtime = { sendMessage() {} }) {
 test('storage defaults, field IDs, and blank helper match the contract', () => {
   assert.deepEqual(validateDecisionSettings(values()), {
     decisionMode: 'llm', jevBaseUrl: 'http://localhost:8765', jevApiKey: '', jevModel: 'jev-latest',
-    jevHeaders: {}, jevRequestParams: {}, jevTimeoutMs: 1200000, jevFallbackEnabled: true, helperModel: '',
+    jevCacheMode: 'context', jevHeaders: {}, jevRequestParams: {}, jevTimeoutMs: 1200000, jevFallbackEnabled: true, helperModel: '',
   });
   for (const key of DECISION_STORAGE_KEYS) {
     assert.match(html, new RegExp(`id="${key}"`));
@@ -54,6 +54,35 @@ test('storage defaults, field IDs, and blank helper match the contract', () => {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(source, /\.\.\.DECISION_STORAGE_KEYS/);
+});
+
+test('cache selector round-trips every mode and tests unsaved selections without storage writes', async () => {
+  const selector = html.match(/<select id="jevCacheMode"[\s\S]*?<\/select>/)[0];
+  assert.deepEqual([...selector.matchAll(/value="([^"]+)"/g)].map(match => match[1]), ['server', 'none', 'options', 'context']);
+  assert.match(selector, /value="context" selected/);
+  for (const jevCacheMode of ['server', 'none', 'options', 'context']) {
+    const stored = { ...DECISION_DEFAULTS, jevCacheMode: 'none', jevHeaders: { 'X-AutoJev-Prefix-Cache': 'false' } };
+    const before = structuredClone(stored);
+    const messages = [];
+    const { ui, fields, click } = init(stored, { sendMessage(message, callback) { messages.push(message); callback({ ok: true }); } });
+    fields.get('jevCacheMode').value = jevCacheMode;
+    assert.equal(ui.read().jevCacheMode, jevCacheMode);
+    assert.equal(normalizeJevConfig(toJevConnectionConfig(ui.read())).cacheMode, jevCacheMode);
+    await click();
+    assert.equal(messages[0].config.cacheMode, jevCacheMode);
+    assert.deepEqual(messages[0].config.headers, before.jevHeaders);
+    assert.deepEqual(stored, before);
+  }
+});
+
+test('existing stored settings gain context on read without rewriting credentials or legacy headers', () => {
+  const stored = { decisionMode: 'jev', jevBaseUrl: 'http://localhost:8765/v1', jevApiKey: 'saved-key',
+    jevModel: 'saved-model', jevHeaders: { 'X-AutoJev-Prefix-Cache': 'true' }, helperModel: 'saved-helper', jevFallbackEnabled: false };
+  const before = structuredClone(stored);
+  const migrated = init(stored).ui.read();
+  assert.equal(migrated.jevCacheMode, 'context');
+  for (const [key, value] of Object.entries(stored)) assert.deepEqual(migrated[key], value);
+  assert.deepEqual(stored, before);
 });
 
 test('accepts each endpoint form, trimmed strings, blank key, custom helper, and disabled fallback', () => {
@@ -81,6 +110,7 @@ test('accepts each endpoint form, trimmed strings, blank key, custom helper, and
 test('rejects invalid fields without quoting any entered value', () => {
   const cases = {
     decisionMode: ['secret-marker'],
+    jevCacheMode: ['secret-marker', '', 'CONTEXT', ' context ', null, false, 1, {}, []],
     jevBaseUrl: ['', 'secret-marker', 'file:///secret-marker', 'https://secret-marker:password@example.com',
       'https://example.com/?key=secret-marker', 'https://example.com/#secret-marker'],
     jevApiKey: ['secret-marker\nembedded'],
@@ -134,6 +164,8 @@ test('reserved headers and all control characters are rejected by both UI and co
   const badHeaders = [
     { 'User-Agent': 'agent' }, { 'user-agent': 'agent' }, { 'CONTENT-Encoding': 'gzip' },
     { Authorization: 'Bearer key' }, { 'Sec-Fetch-Site': 'same-origin' }, { 'Proxy-Key': 'key' },
+    ...['X-AutoJev-Cache-Mode', 'x-autojev-cache-mode', 'X-AUTOJEV-CACHE-MODE'].map(name => ({ [name]: 'context' })),
+    { 'X-Client': 'a', 'x-client': 'b' }, { 'X-Key': '🙂' },
     ...[...Array.from({ length: 32 }, (_, index) => index), 127].map(code => ({ 'X-Key': `secret-marker${String.fromCharCode(code)}end` })),
   ];
   for (const headers of badHeaders) {
@@ -168,11 +200,12 @@ test('connection test sends current unsaved fields and only the runtime config s
   fields.get('jevHeaders').value = '{"X-Key":"header-secret"}';
   fields.get('jevRequestParams').value = '{"temperature":0}';
   fields.get('jevFallbackEnabled').checked = false;
+  fields.get('jevCacheMode').value = 'options';
   const promise = click();
   assert.equal(fields.get('jev-test-btn').disabled, true);
   assert.deepEqual(messages, [{
     type: 'test_jev_connection', config: {
-      baseUrl: 'http://localhost:8765', apiKey: 'unsaved-secret', model: 'jev-latest',
+      baseUrl: 'http://localhost:8765', apiKey: 'unsaved-secret', model: 'jev-latest', cacheMode: 'options',
       headers: { 'X-Key': 'header-secret' }, requestParams: { temperature: 0 }, timeoutMs: 1200000, fallbackEnabled: false,
     },
   }]);
@@ -181,7 +214,7 @@ test('connection test sends current unsaved fields and only the runtime config s
   assert.equal(fields.get('jev-test-status').textContent, 'Jev connection successful.');
   assert.equal(fields.get('jev-test-btn').disabled, false);
   assert.deepEqual(toJevConnectionConfig(init(stored).ui.read()), {
-    baseUrl: 'http://localhost:8765', apiKey: 'stored-secret', model: 'jev-latest',
+    baseUrl: 'http://localhost:8765', apiKey: 'stored-secret', model: 'jev-latest', cacheMode: 'context',
     headers: {}, requestParams: {}, timeoutMs: 1200000, fallbackEnabled: true,
   });
 });
@@ -291,6 +324,7 @@ test('unlisted saved gpt-6-luna stays selected after load and refresh and is sav
 test('actual options save persists parsed Jev settings alongside existing LLM credentials', async () => {
   const { document, writes, save } = await optionsPage(normalSettings);
   document.fields.get('decisionMode').value = 'jev';
+  document.fields.get('jevCacheMode').value = 'none';
   document.fields.get('jevApiKey').value = 'secret-marker';
   document.fields.get('jevHeaders').value = '{"X-Key":"secret-marker"}';
   document.fields.get('jevRequestParams').value = '{"temperature":0}';
@@ -304,12 +338,48 @@ test('actual options save persists parsed Jev settings alongside existing LLM cr
   assert.equal(saved.reasoningLevel, normalSettings.reasoningLevel);
   assert.equal(saved.maxIterations, 30);
   assert.equal(saved.decisionMode, 'jev');
+  assert.equal(saved.jevCacheMode, 'none');
+  assert.equal(Object.hasOwn(saved, 'inputBackend'), false, 'Save leaves the separately stored input backend unchanged');
+  assert.equal(saved.baseUrl, normalSettings.baseUrl);
+  assert.equal(saved.apiKey, normalSettings.apiKey);
   assert.equal(saved.jevApiKey, 'secret-marker');
   assert.deepEqual(saved.jevHeaders, { 'X-Key': 'secret-marker' });
   assert.deepEqual(saved.jevRequestParams, { temperature: 0 });
   assert.equal(saved.jevFallbackEnabled, false);
   assert.equal(saved.helperModel, 'custom-helper');
   assert.match(document.fields.get('save-confirm').textContent, /^Saved/);
+});
+
+test('actual options save migrates missing mode and persists every selector without changing existing settings', async () => {
+  const settings = { ...normalSettings, model: 'gpt-6-luna', inputBackend: 'cdp', baseUrl: 'https://provider.example',
+    jevBaseUrl: 'http://localhost:8765/v1', jevApiKey: 'saved-key', jevModel: 'saved-jev',
+    jevHeaders: { 'X-AutoJev-Prefix-Cache': 'false' }, jevRequestParams: { temperature: 0 },
+    jevFallbackEnabled: false, helperModel: 'saved-helper' };
+  const before = structuredClone(settings);
+  const { document, writes, save } = await optionsPage(settings);
+  assert.equal(document.fields.get('jevCacheMode').value, 'context');
+  assert.equal(writes.length, 0, 'Loading existing settings must not save a migration');
+  for (const jevCacheMode of ['context', 'server', 'none', 'options']) {
+    document.fields.get('jevCacheMode').value = jevCacheMode;
+    await save();
+    const saved = writes.at(-1);
+    assert.equal(saved.jevCacheMode, jevCacheMode);
+    for (const [key, value] of Object.entries(settings)) {
+      if (key === 'inputBackend') assert.equal(Object.hasOwn(saved, key), false);
+      else assert.deepEqual(saved[key], value, key);
+    }
+    assert.deepEqual(settings, before);
+  }
+});
+
+test('invalid cache selection blocks connection and marks the selector', async () => {
+  let calls = 0;
+  const { fields, click } = init({}, { sendMessage() { calls++; } });
+  fields.get('jevCacheMode').value = 'invalid';
+  await click();
+  assert.equal(calls, 0);
+  assert.equal(fields.get('jevCacheMode').attributes.get('aria-invalid'), 'true');
+  assert.match(fields.get('jev-test-status').textContent, /Choose Server default/);
 });
 
 test('Jev mode disables vision without changing or saving over the normal LLM preference', async () => {

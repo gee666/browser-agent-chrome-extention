@@ -77,9 +77,19 @@
         <input type="text" id="jevModel" value="jev-latest" spellcheck="false">
       </div>
       <div class="field-group">
+        <label for="jevCacheMode">AutoJev cache mode</label>
+        <select id="jevCacheMode" aria-describedby="jev-cache-hint">
+          <option value="server">Server default</option>
+          <option value="none">None</option>
+          <option value="options">Options</option>
+          <option value="context" selected>Context</option>
+        </select>
+        <p id="jev-cache-hint" class="field-hint">Context reuses shared state and identical question prefixes before options. Options uses the options-first cache. None disables reuse. Server default sends no cache-mode header. Explicit modes override a legacy X-AutoJev-Prefix-Cache header on AutoJev. Image requests may bypass caching.</p>
+      </div>
+      <div class="field-group">
         <label for="jevHeaders">Headers JSON</label>
         <textarea id="jevHeaders" class="json-input" rows="4" autocomplete="off" spellcheck="false" aria-describedby="jev-headers-hint">{}</textarea>
-        <p id="jev-headers-hint" class="field-hint">JSON object with string values. Authorization, Content-Type, Content-Encoding, User-Agent, and transport headers are reserved. Values cannot contain control characters, including tabs. Use the key field for Bearer authentication. Header values may contain credentials, so do not share this field.</p>
+        <p id="jev-headers-hint" class="field-hint">JSON object with string values. Authorization, Content-Type, Content-Encoding, User-Agent, X-AutoJev-Cache-Mode, and transport headers are reserved. Use the cache-mode selector instead. Names must be unique, ignoring case. Values cannot contain control characters, including tabs. Use the key field for Bearer authentication. Header values may contain credentials, so do not share this field.</p>
       </div>
       <div class="field-group">
         <label for="jevRequestParams">Extra request parameters JSON</label>
