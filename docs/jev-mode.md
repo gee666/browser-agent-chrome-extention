@@ -21,17 +21,11 @@ Open extension Settings. Keep the normal provider configured and authenticated; 
 
 Normal LLM mode retains the existing agent flow. Its vision checkbox does not disable Jev's on-demand screenshots. Jev screenshot stages can send images to Jev and, on failure, to the configured LLM. Helpers can also receive that screenshot.
 
-## Local AutoJev relay
+## Local AutoJev setup
 
-AutoJev's `/docs` specifies same-origin restrictions and requires other browser origins to use their own backend. Direct extension requests to port 8765 return HTTP 403. A small relay is provided rather than changing AutoJev's security policy:
+Use `http://localhost:8765` as the extension endpoint. AutoJev's extension-origin support is deployed; no relay is needed. AutoJev must explicitly allowlist this extension's exact `chrome-extension://YOUR_CHROME_EXTENSION_ID` origin for classification requests. Do not allow arbitrary extension or browser origins.
 
-```sh
-node tools/autojev-relay.mjs YOUR_CHROME_EXTENSION_ID
-```
-
-The relay listens on `127.0.0.1:8878` and forwards only `POST /v1/systemone` to `127.0.0.1:8765`. Set the extension endpoint to `http://localhost:8878`. The supplied API key is forwarded, preserving application usage attribution. The relay stores and logs no keys or request bodies.
-
-Only the selected `chrome-extension://` origin is allowed. Management endpoints, arbitrary destinations, redirects, browser cookies and referrers are not forwarded. The relay must run on the machine reachable as localhost from Chrome. Node.js 20+ is recommended. It is a foreground service; arrange startup yourself if needed. Stop with Ctrl+C. Optional environment variables are `AUTOJEV_EXTENSION_ID`, `AUTOJEV_RELAY_PORT`, `AUTOJEV_UPSTREAM`, which must remain a loopback origin, and `AUTOJEV_RELAY_TIMEOUT_MS`. The relay deadline defaults to 1,200,000 ms and accepts up to 3,600,000 ms. Set it at least as long as the extension deadline when allowing longer queued requests. The transport has no separate five-minute response-header timeout.
+AutoJev must run on the machine reachable as localhost from Chrome. Keep the API key in the extension's API-key field. Until the server support is deployed and your extension origin is allowlisted, direct requests may return HTTP 403. Switch existing saved endpoints only after deployment; this change does not migrate saved settings or credentials.
 
 ## Decision flow
 
@@ -68,11 +62,11 @@ Reports include a sanitized page path, structural locator, structural target/anc
 ## Tests
 
 ```sh
-node --test background/*.test.js options/*.test.js tools/autojev-relay.test.mjs
+node --test background/*.test.js options/*.test.js
 cd lib/browser-agent-core && npm test -- --runInBand
 ```
 
-The connection test invokes the configured Jev endpoint, not fallback. Do not expose the relay to the network or put API keys in command-line arguments.
+The connection test invokes the configured Jev endpoint, not fallback. Do not put API keys in command-line arguments.
 
 Manual fixtures can be served with:
 
@@ -84,6 +78,8 @@ python3 -m http.server 8879 --bind 127.0.0.1 --directory tools/fixtures/jev
 - `/visual.html`: choose the green circle; the text labels alone cannot distinguish the buttons.
 - `/missing.html`: activate the plain-div custom control; the initial reader omits it, so screenshot escalation and DOM investigation are required.
 
-Initial integration validation used the existing OAuth login with `gpt-6-luna` for all browser LLM calls. The local Jev connection through the relay succeeded. Live traces showed direct Jev text → screenshot → missing-target investigation, with a saved report and the expected fixture outcome. Unavailable-Jev tests exercised normal-LLM typing/click decisions and screenshot-stage fallback. Native clicks interfered with other foreground apps during these runs; native testing was stopped and saved settings restored to CDP at the user's request. CDP execution was not tested in that session because its supplied project instructions required Python-only input. The browser-task RPC also timed out once despite task completion; page state and extension history were checked separately.
+Initial integration validation used the existing OAuth login with `gpt-6-luna` for all browser LLM calls. The local Jev connection through the now-removed relay succeeded. Those runs did not validate the direct AutoJev connection. Live traces showed direct Jev text → screenshot → missing-target investigation, with a saved report and the expected fixture outcome. Unavailable-Jev tests exercised normal-LLM typing/click decisions and screenshot-stage fallback. Native clicks interfered with other foreground apps during these runs; native testing was stopped and saved settings restored to CDP at the user's request. CDP execution was not tested in that session because its supplied project instructions required Python-only input. The browser-task RPC also timed out once despite task completion; page state and extension history were checked separately.
 
-Final automated checks: 315 core tests and 80 extension/options/relay tests passed. These checks include redirect rejection, per-image limits, schema overflow fallback, cancellation, blocked results, settings round trips and relay transport deadlines/disconnects. They do not establish broad website reliability.
+After removing the 8 relay tests, all 72 extension/options tests passed with the parent command above. The earlier core run passed 315 tests covering redirect rejection, per-image limits, schema overflow fallback, cancellation and blocked results; it was not rerun for this parent-only change. Parent tests cover settings round trips and runtime integration. They do not establish broad website reliability.
+
+After deploying AutoJev commit `5ca3d64`, direct authenticated requests from the extension to port 8765 returned HTTP 200, and the extension's real Jev connection test returned `{ok:true}` without fallback or a relay. The saved endpoint was switched to port 8765. The 57 server origin-policy checks and existing queue checks passed. Live HTTP checks confirmed allowlisted preflight, required inference authentication, rejection of unlisted origins, and rejection of origin-bearing extension requests to local management routes. Originless local tools retain their existing server access.

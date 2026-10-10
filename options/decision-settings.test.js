@@ -114,7 +114,7 @@ test('rejects invalid fields without quoting any entered value', () => {
 
 test('accepted UI configurations pass the shared core normalizer', () => {
   for (const timeoutMs of [1, 1200000, 3600000]) {
-    for (const endpoint of ['http://localhost:8765', 'http://localhost:8878/v1', 'https://example.com/v1/systemone']) {
+    for (const endpoint of ['http://localhost:8765', 'http://localhost:8765/v1', 'https://example.com/v1/systemone']) {
       for (const headers of [{}, { 'X-Key': 'header-secret' }, { 'X-AutoJev-Prefix-Cache': 'true' }, { 'x-api-key': 'local-key' }]) {
         const settings = validateDecisionSettings(values({
           decisionMode: 'jev', jevTimeoutMs: String(timeoutMs), jevBaseUrl: endpoint,
@@ -315,9 +315,10 @@ test('actual options save persists parsed Jev settings alongside existing LLM cr
 test('Jev mode disables vision without changing or saving over the normal LLM preference', async () => {
   assert.match(html, /Use vision in normal LLM mode/);
   assert.match(html, /Jev sends screenshots on demand to the configured decision, fallback, and helper providers/);
-  assert.match(html, /tools\/autojev-relay\.mjs/);
-  assert.match(html, /http:\/\/localhost:8878/);
-  assert.match(html, /allowlist your extension origin/);
+  assert.match(html, /direct AutoJev API at http:\/\/localhost:8765 once extension-origin support is deployed/);
+  assert.match(html, /explicitly allowlist your exact chrome-extension:\/\/ origin/);
+  assert.match(html, /No relay is needed/);
+  assert.doesNotMatch(html, /autojev-relay|localhost:8878/);
   for (const preference of [false, true]) {
     const p = await optionsPage({ ...normalSettings, decisionMode: 'jev', useVision: preference });
     const vision = p.document.fields.get('useVision');
