@@ -44,6 +44,8 @@ export function buildTaskResult(taskRun, status, extra = {}) {
     status,
     startedAt: taskRun?.startedAt || null,
     endedAt: Date.now(),
+    ...(typeof extra.finalStatus?.success === 'boolean' ? { success: extra.finalStatus.success } : {}),
+    ...(extra.finalStatus?.blocked === true ? { blocked: true } : {}),
     ...extra,
   };
 }

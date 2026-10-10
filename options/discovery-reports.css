@@ -1,0 +1,48 @@
+#app.reports-app {
+  max-width: 1000px;
+  margin: 24px auto;
+}
+
+.reports-app a { color: #1d4ed8; }
+
+#reports-refresh-btn {
+  padding: 8px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #374151;
+  font: inherit;
+  cursor: pointer;
+}
+
+#reports-refresh-btn:disabled { opacity: 0.5; cursor: default; }
+#reports-status { font-size: 14px; }
+.reports-table-wrap { overflow-x: auto; }
+#reports-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#reports-table caption { text-align: left; margin-bottom: 8px; color: #6b7280; }
+#reports-table th, #reports-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-wrap: anywhere;
+}
+#reports-table th { background: #f9fafb; }
+#reports-table a[aria-current="true"] { font-weight: 600; }
+#report-detail { margin-top: 24px; }
+#report-json {
+  padding: 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 65vh;
+  overflow: auto;
+}
+
+@media (max-width: 700px) {
+  #app.reports-app { margin: 0; padding: 20px; border-radius: 0; }
+}

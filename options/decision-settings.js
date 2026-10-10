@@ -1,0 +1,201 @@
+import { normalizeJevConfig } from '../lib/browser-agent-core/background/jev.js';
+
+// Stored beside the existing provider credentials in chrome.storage.local.
+export const DECISION_DEFAULTS = Object.freeze({
+  decisionMode: 'llm',
+  jevBaseUrl: 'http://localhost:8765',
+  jevApiKey: '',
+  jevModel: 'jev-latest',
+  jevHeaders: Object.freeze({}),
+  jevRequestParams: Object.freeze({}),
+  jevTimeoutMs: 1200000,
+  jevFallbackEnabled: true,
+  helperModel: '',
+});
+export const DECISION_STORAGE_KEYS = Object.keys(DECISION_DEFAULTS);
+
+export class DecisionValidationError extends Error {
+  constructor(field, message) {
+    super(message);
+    this.name = 'DecisionValidationError';
+    this.field = field;
+  }
+}
+
+function invalid(field, message) {
+  throw new DecisionValidationError(field, message);
+}
+
+function jsonObject(value, field, label) {
+  let parsed;
+  try {
+    parsed = JSON.parse(value.trim() || '{}');
+  } catch {
+    // JSON parser errors can quote secrets from the supplied text.
+    invalid(field, `${label} must be valid JSON.`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    invalid(field, `${label} must be a JSON object.`);
+  }
+  const unsafeKeys = new Set(['__proto__', 'prototype', 'constructor']);
+  function checkKeys(object) {
+    if (!object || typeof object !== 'object') return;
+    for (const [key, child] of Object.entries(object)) {
+      if (unsafeKeys.has(key)) invalid(field, `${label} contains an unsafe object key.`);
+      checkKeys(child);
+    }
+  }
+  checkKeys(parsed);
+  return parsed;
+}
+
+// Accept origin, /v1, or full /v1/systemone URLs. Endpoint resolution is runtime-owned.
+export function validateDecisionSettings(values) {
+  const decisionMode = values.decisionMode;
+  if (!['llm', 'jev'].includes(decisionMode)) {
+    invalid('decisionMode', 'Choose LLM or Jev decision mode.');
+  }
+  const jevBaseUrl = values.jevBaseUrl.trim();
+  let url;
+  try {
+    url = new URL(jevBaseUrl);
+  } catch {
+    invalid('jevBaseUrl', 'Jev endpoint must be an HTTP or HTTPS URL.');
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
+    invalid('jevBaseUrl', 'Jev endpoint must be an HTTP or HTTPS URL.');
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    invalid('jevBaseUrl', 'Jev endpoint cannot contain credentials, a query, or a fragment. Use the key or headers fields for credentials.');
+  }
+  const jevApiKey = values.jevApiKey.trim();
+  if (/[\x00-\x1f\x7f]/.test(jevApiKey)) {
+    invalid('jevApiKey', 'Jev API key cannot contain control characters.');
+  }
+  const jevModel = values.jevModel.trim();
+  if (!jevModel || /[\x00-\x1f\x7f]/.test(jevModel)) {
+    invalid('jevModel', 'Enter a Jev model name without control characters.');
+  }
+  const helperModel = values.helperModel.trim();
+  if (/[\x00-\x1f\x7f]/.test(helperModel)) {
+    invalid('helperModel', 'Helper model cannot contain control characters.');
+  }
+  const jevHeaders = jsonObject(values.jevHeaders, 'jevHeaders', 'Jev headers');
+  const headerNames = new Set();
+  // Use the runtime's header rules instead of maintaining a separate reserved-name
+  // regex or control-character list. Do not forward its error text to the UI.
+  try {
+    normalizeJevConfig({ headers: jevHeaders });
+  } catch {
+    invalid('jevHeaders', 'Jev headers contain an invalid or reserved name or value.');
+  }
+  for (const [name, value] of Object.entries(jevHeaders)) {
+    const lowerName = name.toLowerCase();
+    if (headerNames.has(lowerName)) {
+      invalid('jevHeaders', 'Jev header names must be unique, ignoring case.');
+    }
+    headerNames.add(lowerName);
+    // Fetch header values are byte strings. Core owns name/type/control checks.
+    if (/[^\x00-\xff]/.test(value)) {
+      invalid('jevHeaders', 'Jev header values must use HTTP-compatible characters.');
+    }
+  }
+  const jevRequestParams = jsonObject(values.jevRequestParams, 'jevRequestParams', 'Jev request parameters');
+  if (['state', 'questions', 'images', 'model'].some(key => Object.hasOwn(jevRequestParams, key))) {
+    invalid('jevRequestParams', 'Jev request parameters cannot override state, questions, images, or model.');
+  }
+  const timeoutText = String(values.jevTimeoutMs).trim();
+  const jevTimeoutMs = Number(timeoutText);
+  if (!/^\d+$/.test(timeoutText) || !Number.isSafeInteger(jevTimeoutMs) ||
+      jevTimeoutMs < 1 || jevTimeoutMs > 3600000) {
+    invalid('jevTimeoutMs', 'Jev timeout must be a whole number from 1 to 3600000 milliseconds.');
+  }
+  if (typeof values.jevFallbackEnabled !== 'boolean') {
+    invalid('jevFallbackEnabled', 'Choose whether to allow LLM fallback.');
+  }
+  return {
+    decisionMode, jevBaseUrl, jevApiKey, jevModel, jevHeaders,
+    jevRequestParams, jevTimeoutMs, jevFallbackEnabled: values.jevFallbackEnabled, helperModel,
+  };
+}
+
+export function toJevConnectionConfig(settings) {
+  return {
+    baseUrl: settings.jevBaseUrl,
+    apiKey: settings.jevApiKey,
+    model: settings.jevModel,
+    headers: settings.jevHeaders,
+    requestParams: settings.jevRequestParams,
+    timeoutMs: settings.jevTimeoutMs,
+    fallbackEnabled: settings.jevFallbackEnabled,
+  };
+}
+
+export function initDecisionSettings(document, runtime, stored) {
+  const fields = Object.fromEntries(DECISION_STORAGE_KEYS.map(key => [key, document.getElementById(key)]));
+  const testButton = document.getElementById('jev-test-btn');
+  const status = document.getElementById('jev-test-status');
+  for (const [key, field] of Object.entries(fields)) {
+    const value = stored[key] ?? DECISION_DEFAULTS[key];
+    if (key === 'jevFallbackEnabled') field.checked = value;
+    else if (key === 'jevHeaders' || key === 'jevRequestParams') field.value = JSON.stringify(value, null, 2);
+    else field.value = value;
+    field.addEventListener('input', () => {
+      field.removeAttribute('aria-invalid');
+      status.textContent = '';
+    });
+  }
+  const useVision = document.getElementById('useVision');
+  function updateDecisionMode() {
+    // Keep the checked state as the saved normal-LLM preference. Jev escalation
+    // is mandatory and does not use this checkbox.
+    useVision.disabled = fields.decisionMode.value === 'jev';
+  }
+  updateDecisionMode();
+  fields.decisionMode.addEventListener('change', updateDecisionMode);
+
+  function read() {
+    for (const field of Object.values(fields)) field.removeAttribute('aria-invalid');
+    const values = Object.fromEntries(Object.entries(fields).map(([key, field]) => [
+      key, key === 'jevFallbackEnabled' ? field.checked : field.value,
+    ]));
+    try {
+      return validateDecisionSettings(values);
+    } catch (error) {
+      if (error instanceof DecisionValidationError) fields[error.field].setAttribute('aria-invalid', 'true');
+      throw error;
+    }
+  }
+  testButton.addEventListener('click', async () => {
+    let settings;
+    try {
+      settings = read();
+    } catch (error) {
+      status.textContent = error instanceof DecisionValidationError ? error.message : 'Check the Jev settings.';
+      status.style.color = '#dc2626';
+      return;
+    }
+    testButton.disabled = true;
+    status.textContent = 'Testing connection...';
+    status.style.color = '#6b7280';
+    // Test the current fields without saving or contacting the endpoint from the options page.
+    const ok = await new Promise(resolve => {
+      const timer = setTimeout(() => resolve(false), settings.jevTimeoutMs + 1000);
+      try {
+        runtime.sendMessage({ type: 'test_jev_connection', config: toJevConnectionConfig(settings) }, response => {
+          clearTimeout(timer);
+          // Never display runtime errors or endpoint response text; either can include secrets.
+          const failed = !!runtime.lastError;
+          resolve(!failed && response?.ok === true);
+        });
+      } catch {
+        clearTimeout(timer);
+        resolve(false);
+      }
+    });
+    status.textContent = ok ? 'Jev connection successful.' : 'Jev connection failed. Check the endpoint, credentials, and server availability.';
+    status.style.color = ok ? '#16a34a' : '#dc2626';
+    testButton.disabled = false;
+  });
+  return { read };
+}

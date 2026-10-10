@@ -49,7 +49,69 @@
 
     <hr class="section-divider">
 
-    <h2>LLM Provider (API Key)</h2>
+    <h2>Decision mode</h2>
+    <p class="section-desc">LLM mode uses the provider below for decisions. Jev mode uses a separate classification endpoint. Keep the LLM provider configured for helper work and optional fallback.</p>
+
+    <div class="field-group">
+      <label for="decisionMode">Decision mode</label>
+      <select id="decisionMode">
+        <option value="llm">LLM</option>
+        <option value="jev">Jev</option>
+      </select>
+    </div>
+
+    <section id="jev-settings" aria-labelledby="jev-heading">
+      <h2 id="jev-heading">Jev connection</h2>
+      <div class="field-group">
+        <label for="jevBaseUrl">Endpoint URL</label>
+        <input type="text" id="jevBaseUrl" value="http://localhost:8765" autocomplete="off" spellcheck="false" aria-describedby="jev-endpoint-hint">
+        <p id="jev-endpoint-hint" class="field-hint">HTTP or HTTPS origin, /v1, or full /v1/systemone URL. No credentials or query string in the URL. Local AutoJev requires browser apps on other origins to use their own backend. For this extension, run tools/autojev-relay.mjs and use http://localhost:8878. The relay forwards to port 8765 and must allowlist your extension origin.</p>
+      </div>
+      <div class="field-group">
+        <label for="jevApiKey">Jev API key</label>
+        <input type="password" id="jevApiKey" autocomplete="off" spellcheck="false" aria-describedby="jev-key-hint">
+        <p id="jev-key-hint" class="field-hint">Sent as a Bearer token. Optional for servers that do not require authentication. Saved locally alongside your provider credentials.</p>
+      </div>
+      <div class="field-group">
+        <label for="jevModel">Jev model</label>
+        <input type="text" id="jevModel" value="jev-latest" spellcheck="false">
+      </div>
+      <div class="field-group">
+        <label for="jevHeaders">Headers JSON</label>
+        <textarea id="jevHeaders" class="json-input" rows="4" autocomplete="off" spellcheck="false" aria-describedby="jev-headers-hint">{}</textarea>
+        <p id="jev-headers-hint" class="field-hint">JSON object with string values. Authorization, Content-Type, Content-Encoding, User-Agent, and transport headers are reserved. Values cannot contain control characters, including tabs. Use the key field for Bearer authentication. Header values may contain credentials, so do not share this field.</p>
+      </div>
+      <div class="field-group">
+        <label for="jevRequestParams">Extra request parameters JSON</label>
+        <textarea id="jevRequestParams" class="json-input" rows="4" autocomplete="off" spellcheck="false" aria-describedby="jev-params-hint">{}</textarea>
+        <p id="jev-params-hint" class="field-hint">JSON object. Cannot override state, questions, images, or model. Values are saved locally and sent to Jev.</p>
+      </div>
+      <div class="field-group">
+        <label for="jevTimeoutMs">Timeout in milliseconds</label>
+        <input type="number" id="jevTimeoutMs" min="1" max="3600000" step="1" value="1200000" aria-describedby="jev-timeout-hint">
+        <p id="jev-timeout-hint" class="field-hint">Local AutoJev recommends at least 1200 seconds per request. Default 1200000 ms, maximum 3600000 ms. Queued requests may need longer.</p>
+      </div>
+      <div class="field-group checkbox-group">
+        <label>
+          <input type="checkbox" id="jevFallbackEnabled" checked>
+          Fall back to the LLM provider if Jev fails
+        </label>
+      </div>
+      <div class="field-group">
+        <label for="helperModel">Helper model</label>
+        <input type="text" id="helperModel" placeholder="Use the configured LLM model" spellcheck="false" aria-describedby="helper-model-hint">
+        <p id="helper-model-hint" class="field-hint">Leave blank to use the LLM model below. A custom helper uses the same provider and credentials.</p>
+      </div>
+      <div class="field-group">
+        <button id="jev-test-btn" type="button">Test connection</button>
+        <p class="field-hint">Tests the current Jev fields through the extension runtime without saving.</p>
+        <div id="jev-test-status" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <h2>LLM provider</h2>
 
     <div class="field-group">
       <label for="provider">Provider</label>
@@ -103,15 +165,18 @@
 
     <div class="field-group checkbox-group">
       <label>
-        <input type="checkbox" id="useVision" checked>
-        Use vision (send screenshots to LLM)
+        <input type="checkbox" id="useVision" checked aria-describedby="use-vision-hint">
+        Use vision in normal LLM mode
       </label>
+      <p id="use-vision-hint" class="field-hint">Applies to normal LLM mode only. Jev sends screenshots on demand to the configured decision, fallback, and helper providers, regardless of this setting. Your normal LLM preference is preserved.</p>
     </div>
 
     <div id="form-actions">
       <button id="save-btn">Save Settings</button>
-      <span id="save-confirm"></span>
+      <span id="save-confirm" role="status" aria-live="polite"></span>
     </div>
+
+    <p class="section-desc"><a id="discovery-reports-link" href="discovery-reports.html">View DOM discovery reports</a></p>
 
     <!-- OAuth Section -->
     <hr class="section-divider">

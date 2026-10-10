@@ -7,7 +7,7 @@ import {
   OPENAI_REDIRECT_URI, ANTHROPIC_REDIRECT_URI, GEMINI_REDIRECT_URI,
   setPendingOAuth, setPendingOAuthTabId, getPendingOAuth, clearPendingOAuth,
   storeOAuthTokens, getOAuthTokens, clearOAuthTokens, parseRedirectUrl,
-  formatDebugEntry, makeDebugFilename,
+  formatDebugEntry, makeDebugFilename, testJevConnection,
 } from '../lib/browser-agent-core/background/index.js';
 import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
 // TODO(public-api): importing from the package `src/` entry reaches across
@@ -18,6 +18,7 @@ import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.
 import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
 import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
 import { createKeepalivePump } from './pi-bridge-keepalive.js';
+import { DECISION_CONFIG_KEYS, decisionOptions, appendDiscoveryReport } from './decision-settings.js';
 import { createPiBridgeReconciler } from './pi-bridge-reconciler.js';
 import {
   createTaskError,
@@ -237,7 +238,7 @@ function createDebugLogger(isDebug) {
 async function loadAgentConfig() {
   return await new Promise((resolve, reject) => {
     chrome.storage.local.get(
-      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend', 'reasoningLevel'],
+      ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'debugMode', 'inputBackend', 'reasoningLevel', ...DECISION_CONFIG_KEYS],
       (config) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
@@ -314,6 +315,10 @@ async function startAgentTask({
     }
 
     const llm = createProvider(config);
+    const decisions = decisionOptions(config, createProvider, llm);
+    taskRun.decisionTrace = [];
+    await chrome.storage.local.set({ agentDecisionTrace: [] });
+    throwIfCancelled(taskRun, 'decision setup');
     const target = await piBridgeRuntime.resolveRunTaskTab({
       tabId: tabId ?? tab_id,
       useActiveTab: useActiveTab || use_active_tab,
@@ -348,6 +353,8 @@ async function startAgentTask({
       llm,
       bridge,
       executor,
+      ...decisions,
+      onDiscovery: recordDiscoveryReport,
       onStatus: (status) => {
         const terminalState = status.state;
         // TODO(public-api): we copy the status into lastStatus and then mutate
@@ -358,6 +365,11 @@ async function startAgentTask({
         // this mutation is not needed. Refactor is intentionally out of scope
         // here.
         lastStatus = { ...status };
+        if (status.decision) {
+          taskRun.decisionTrace.push({ ...status.decision, iteration: status.iteration, timestamp: status.timestamp });
+          taskRun.decisionTrace = taskRun.decisionTrace.slice(-100);
+          chrome.storage.local.set({ agentDecisionTrace: [...taskRun.decisionTrace] }).catch(() => {});
+        }
 
         if (terminalState === 'error') {
           status.state = 'thinking';
@@ -782,7 +794,31 @@ function createProvider(config) {
   }
 }
 
+// Serialize investigation updates so 'resolved' cannot overwrite the executed outcome.
+let discoveryWrite = Promise.resolve();
+function recordDiscoveryReport(entry) {
+  discoveryWrite = discoveryWrite.catch(() => {}).then(async () => {
+    const stored = await getLocal(['domDiscoveryReports']);
+    await chrome.storage.local.set({
+      domDiscoveryReports: appendDiscoveryReport(stored.domDiscoveryReports, entry),
+    });
+  });
+  return discoveryWrite;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+
+  if (message.type === 'test_jev_connection') {
+    // Only extension pages may submit credentials to a configurable endpoint.
+    if (sender.id !== chrome.runtime.id || (sender.url && !sender.url.startsWith(chrome.runtime.getURL('')))) {
+      sendResponse({ ok: false, error: 'Extension settings required' });
+      return false;
+    }
+    testJevConnection(message.config)
+      .then(result => sendResponse(result))
+      .catch(() => sendResponse({ ok: false, error: 'Connection test failed. Check endpoint, credentials and timeout.' }));
+    return true;
+  }
 
   // ── Agent control ────────────────────────────────────────────────────────────
   if (message.type === 'chat_get') {

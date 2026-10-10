@@ -110,7 +110,7 @@ test('hardcoded model dropdown includes GPT 5.5 families', async () => {
   }
 });
 
-test('OpenAI OAuth exposes only the modern models and a reasoning selector', async () => {
+test('OpenAI OAuth exposes built-in models and a reasoning selector without replacing saved models', async () => {
   const [source, html, background] = await Promise.all([
     readFile(OPTIONS_JS_PATH, 'utf8'),
     readFile(OPTIONS_HTML_PATH, 'utf8'),
@@ -126,7 +126,8 @@ test('OpenAI OAuth exposes only the modern models and a reasoning selector', asy
     assert.match(html, new RegExp(`value=["']${level}["']`));
   }
   assert.match(source, /reasoningLevel:\s*reasoningLevelInput\.value/);
-  assert.match(source, /provider === ['"]openai-codex['"] && !models\.includes\(savedModel\)/);
+  assert.match(source, /const selectedModel = savedModel \|\| MODEL_DEFAULTS\[provider\] \|\| ''/);
+  assert.doesNotMatch(source, /provider === ['"]openai-codex['"] && !models\.includes\(savedModel\)/);
   assert.match(background, /OpenAICodexOAuthProvider\(\{\s*model:\s*config\.model,\s*reasoningLevel:\s*config\.reasoningLevel\s*\}\)/);
 });
 

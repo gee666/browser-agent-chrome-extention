@@ -1,4 +1,5 @@
 import { DEFAULT_PI_BRIDGE_CONFIG, normalizePiBridgeConfig, readPiBridgeConfig } from '../lib/pi-browser-agent-bridge/src/index.js';
+import { DECISION_STORAGE_KEYS, DecisionValidationError, initDecisionSettings } from './decision-settings.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -162,8 +163,7 @@ async function fetchModels(provider, apiKey, baseUrl) {
     return { models, source: 'live' };
   } catch (err) {
     const fallback = HARDCODED_MODELS[provider] || [];
-    console.warn(`[models] Live fetch failed for ${provider}: ${err.message}. Using hardcoded list.`);
-    return { models: fallback, source: 'hardcoded', fetchError: err.message };
+    return { models: fallback, source: 'hardcoded', fetchError: true };
   }
 }
 
@@ -194,22 +194,22 @@ async function loadModels(provider, apiKey, baseUrl, savedModel) {
     } else {
       // hardcoded
       if (fetchError) {
-        if (statusEl) statusEl.textContent = `⚠ API error (${fetchError}) — showing built-in list`;
+        if (statusEl) statusEl.textContent = 'API request failed. Showing built-in model list.';
       } else {
         if (statusEl) statusEl.textContent = `${models.length} models available`;
       }
     }
     setTimeout(() => {
-      if (statusEl && !statusEl.textContent.includes('⚠')) statusEl.textContent = '';
+      if (statusEl && !fetchError) statusEl.textContent = '';
     }, 4000);
 
-    const selectedModel = provider === 'openai-codex' && !models.includes(savedModel)
-      ? MODEL_DEFAULTS[provider]
-      : (savedModel || MODEL_DEFAULTS[provider] || '');
+    // A provider's model list may lag behind supported or custom model names.
+    // Keep the saved choice; populateModelSelect adds it when it is unlisted.
+    const selectedModel = savedModel || MODEL_DEFAULTS[provider] || '';
     populateModelSelect(models, selectedModel);
   } catch (err) {
     if (seq !== _modelFetchSeq) return;
-    if (statusEl) statusEl.textContent = `⚠ ${err.message}`;
+    if (statusEl) statusEl.textContent = 'Could not load models. Check your provider connection.';
     populateModelSelect([], savedModel || MODEL_DEFAULTS[provider] || '');
   } finally {
     if (seq === _modelFetchSeq) {
@@ -276,7 +276,7 @@ function setStorage(items) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'inputBackend', 'reasoningLevel'];
+  const keys = ['provider', 'apiKey', 'model', 'baseUrl', 'maxIterations', 'useVision', 'inputBackend', 'reasoningLevel', ...DECISION_STORAGE_KEYS];
   const [config, piBridgeConfig] = await Promise.all([
     new Promise(r => chrome.storage.local.get(keys, r)),
     readPiBridgeConfig(chrome.storage.local),
@@ -290,7 +290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await setStorage({ inputBackend: 'cdp' });
     } catch (error) {
-      console.error('[options] failed to persist default input backend', error);
+      showError('Failed to save the default input backend.');
     }
   }
   for (const radio of inputBackendRadios) {
@@ -300,8 +300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         await setStorage({ inputBackend: radio.value });
       } catch (error) {
-        console.error('[options] failed to save input backend', error);
-        showError(`Failed to save input backend: ${error.message}`);
+        showError('Failed to save input backend. Try again.');
       }
     });
   }
@@ -336,6 +335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   useVisionInput.checked = config.useVision !== false;
   reasoningLevelInput.value = config.reasoningLevel || 'medium';
 
+  const decisionSettings = initDecisionSettings(document, chrome.runtime, config);
   updateUIForProvider(providerSel.value);
 
   // Initial model load
@@ -396,8 +396,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    let decisionConfig;
+    try {
+      decisionConfig = decisionSettings.read();
+    } catch (error) {
+      showError(error instanceof DecisionValidationError ? error.message : 'Check the decision settings.');
+      return;
+    }
+
     try {
       await setStorage({
+        ...decisionConfig,
         provider,
         apiKey:         apiKeyInput.value.trim(),
         model,
@@ -415,8 +424,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       saveConfirm.style.color = '#16a34a';
       setTimeout(() => { saveConfirm.textContent = ''; }, 2000);
     } catch (error) {
-      console.error('[options] failed to save settings', error);
-      showError(`Failed to save settings: ${error.message}`);
+      // Storage errors may contain credential values. Do not echo or log them.
+      showError('Failed to save settings. Try again.');
     }
   });
 
@@ -478,8 +487,7 @@ async function startOAuthLogin(uiKey, storeKey) {
   if (loginBtn) loginBtn.disabled = true;
   chrome.runtime.sendMessage({ type: 'oauth_start', provider: storeKey }, (resp) => {
     if (chrome.runtime.lastError || !resp?.started) {
-      const err = resp?.error || chrome.runtime.lastError?.message || 'Unknown error';
-      if (statusEl) statusEl.textContent = `Error: ${err}`;
+      if (statusEl) statusEl.textContent = 'Could not start login. Try again.';
       if (loginBtn) loginBtn.disabled = false;
     } else {
       if (statusEl) statusEl.textContent = 'Complete login in the browser window that opened...';
@@ -498,7 +506,7 @@ async function doOAuthLogout(storeKey) {
 }
 
 function handleOAuthResult(status) {
-  const { provider, success, error, email } = status;
+  const { provider, success, email } = status;
   const uiKey = OAUTH_UI_CONFIG.find((entry) => entry.providerId === provider)?.uiId;
   if (!uiKey) return;
   const statusEl = document.getElementById(`status-${uiKey}`);
@@ -511,7 +519,7 @@ function handleOAuthResult(status) {
     const providerSel = document.getElementById('provider');
     if (providerSel) loadModels(providerSel.value, '', '', getSelectedModel());
   } else {
-    if (statusEl) { statusEl.textContent = `✗ Login failed: ${error}`; statusEl.style.color = '#dc2626'; }
+    if (statusEl) { statusEl.textContent = 'Login failed. Try again.'; statusEl.style.color = '#dc2626'; }
   }
 }
 

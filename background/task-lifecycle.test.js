@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   isSettledByStatus,
   buildTaskResultFromRun,
+  buildTaskResult,
 } from './task-lifecycle.js';
 
 test('recoverable error status is not treated as settled', () => {
@@ -33,6 +34,16 @@ test('run completion after recoverable error becomes terminal error result', () 
   assert.equal(result.message, 'Max iterations reached');
   assert.equal(result.error.code, 'E_RUNTIME');
   assert.equal(result.finalStatus.state, 'error');
+});
+
+test('blocked staged completion remains machine-readable in both settlement paths', () => {
+  const finalStatus = { state: 'done', success: false, blocked: true, message: 'Required input missing' };
+  for (const result of [buildTaskResult({}, 'done', { finalStatus }), buildTaskResultFromRun({}, { lastStatus: finalStatus })]) {
+    assert.equal(result.success, false);
+    assert.equal(result.blocked, true);
+    assert.equal(result.finalStatus.success, false);
+  }
+  assert.equal(buildTaskResult({}, 'done', { finalStatus: { success: true } }).success, true);
 });
 
 test('run completion preserves done message', () => {
