@@ -315,8 +315,8 @@ test('actual options save persists parsed Jev settings alongside existing LLM cr
 test('Jev mode disables vision without changing or saving over the normal LLM preference', async () => {
   assert.match(html, /Use vision in normal LLM mode/);
   assert.match(html, /Jev sends screenshots on demand to the configured decision, fallback, and helper providers/);
-  assert.match(html, /direct AutoJev API at http:\/\/localhost:8765 once extension-origin support is deployed/);
-  assert.match(html, /explicitly allowlist your exact chrome-extension:\/\/ origin/);
+  assert.match(html, /For AutoJev, use http:\/\/localhost:8765/);
+  assert.match(html, /Set allowedOrigins to \["\*"\] or your origin/);
   assert.match(html, /No relay is needed/);
   assert.doesNotMatch(html, /autojev-relay|localhost:8878/);
   for (const preference of [false, true]) {

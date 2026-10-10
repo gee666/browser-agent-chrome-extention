@@ -23,9 +23,7 @@ Normal LLM mode retains the existing agent flow. Its vision checkbox does not di
 
 ## Local AutoJev setup
 
-Use `http://localhost:8765` as the extension endpoint. AutoJev's extension-origin support is deployed; no relay is needed. AutoJev must explicitly allowlist this extension's exact `chrome-extension://YOUR_CHROME_EXTENSION_ID` origin for classification requests. Do not allow arbitrary extension or browser origins.
-
-AutoJev must run on the machine reachable as localhost from Chrome. Keep the API key in the extension's API-key field. Until the server support is deployed and your extension origin is allowlisted, direct requests may return HTTP 403. Switch existing saved endpoints only after deployment; this change does not migrate saved settings or credentials.
+Use `http://localhost:8765` and your API key. In AutoJev's `config/server.json`, set `"allowedOrigins": ["*"]` for all origins, or list specific origins. Run `AutoJev.cmd restart`; no rebuild or relay is needed.
 
 ## Decision flow
 

@@ -65,7 +65,7 @@
       <div class="field-group">
         <label for="jevBaseUrl">Endpoint URL</label>
         <input type="text" id="jevBaseUrl" value="http://localhost:8765" autocomplete="off" spellcheck="false" aria-describedby="jev-endpoint-hint">
-        <p id="jev-endpoint-hint" class="field-hint">HTTP or HTTPS origin, /v1, or full /v1/systemone URL. No credentials or query string in the URL. Use the direct AutoJev API at http://localhost:8765 once extension-origin support is deployed. AutoJev must explicitly allowlist your exact chrome-extension:// origin. No relay is needed.</p>
+        <p id="jev-endpoint-hint" class="field-hint">HTTP or HTTPS origin, /v1, or full /v1/systemone URL. No credentials or query string in the URL. For AutoJev, use http://localhost:8765. Set allowedOrigins to ["*"] or your origin in config/server.json, then restart AutoJev. No relay is needed.</p>
       </div>
       <div class="field-group">
         <label for="jevApiKey">Jev API key</label>
