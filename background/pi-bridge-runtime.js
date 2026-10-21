@@ -8,7 +8,6 @@ import { createBufferedObservabilityHandlers } from '../lib/pi-browser-agent-bri
 import { createJsNavigationDestructiveHandlers } from '../lib/pi-browser-agent-bridge/src/handlers/js-navigation-family.js';
 import { createReadOnlyHandlers } from '../lib/pi-browser-agent-bridge/src/handlers/read-only/index.js';
 
-const AGENT_TAB_STORAGE_KEY = 'piBridge.agentTabId';
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 const SETTLE_DELAY_MS = 500;
 const SERIAL_REQUEST_TYPES = [
@@ -289,20 +288,6 @@ export function createPiBridgeRuntime({
 
   let hooksAttached = false;
   let warmed = false;
-  let cachedAgentTabId = null;
-
-  async function storageGet(keys) {
-    return await new Promise((resolve) => {
-      storageArea.get(keys, (value) => resolve(value || {}));
-    });
-  }
-
-  async function storageSet(value) {
-    return await new Promise((resolve) => {
-      storageArea.set(value, () => resolve());
-    });
-  }
-
   async function executeInTab(tabId, mode, params = {}) {
     const [{ result } = {}] = await scriptingApi.executeScript({
       target: { tabId },
@@ -319,54 +304,6 @@ export function createPiBridgeRuntime({
     return await tabsApi.get(tabId).catch(() => null);
   }
 
-  async function persistAgentTabId(tabId) {
-    cachedAgentTabId = tabId;
-    await storageSet({ [AGENT_TAB_STORAGE_KEY]: tabId }).catch(() => {});
-  }
-
-  async function getStoredAgentTabId() {
-    if (typeof cachedAgentTabId === 'number') {
-      return cachedAgentTabId;
-    }
-    const stored = await storageGet([AGENT_TAB_STORAGE_KEY]);
-    cachedAgentTabId = Number.isFinite(stored?.[AGENT_TAB_STORAGE_KEY]) ? stored[AGENT_TAB_STORAGE_KEY] : null;
-    return cachedAgentTabId;
-  }
-
-  async function ensureAgentTab() {
-    const storedTabId = await getStoredAgentTabId();
-    const storedTab = typeof storedTabId === 'number' ? await getTab(storedTabId) : null;
-    if (storedTab && typeof storedTab.id === 'number') {
-      const storedUrl = typeof storedTab.url === 'string' ? storedTab.url : '';
-      const needsMigration = storedUrl === 'about:blank' || storedUrl.startsWith('chrome://') || storedUrl.startsWith('edge://');
-
-      if (!needsMigration) {
-        if (!storedTab.pinned) {
-          try {
-            await tabsApi.update(storedTab.id, { pinned: true });
-          } catch {
-            // best effort only
-          }
-        }
-        return storedTab;
-      }
-
-      try {
-        await tabsApi.remove(storedTab.id);
-      } catch {
-        // best effort only
-      }
-      cachedAgentTabId = null;
-      await storageSet({ [AGENT_TAB_STORAGE_KEY]: null }).catch(() => {});
-    }
-
-    const created = await tabsApi.create({ url: 'https://example.com/', pinned: true, active: false }).catch((error) => {
-      throw createProtocolError('E_NO_ACTIVE_TAB', 'Failed to create the dedicated agent tab', error);
-    });
-    await persistAgentTabId(created.id);
-    return created;
-  }
-
   async function resolveTarget(options = {}) {
     let resolved;
 
@@ -376,15 +313,12 @@ export function createPiBridgeRuntime({
         throw createProtocolError('E_NO_ACTIVE_TAB', `Tab ${options.tabId} was not found`, { tabId: options.tabId });
       }
       resolved = { tabId: tab.id, tab };
-    } else if (options.useActiveTab) {
+    } else {
       const [tab] = await tabsApi.query({ active: true, currentWindow: true }).catch(() => []);
       if (!tab || typeof tab.id !== 'number') {
         throw createProtocolError('E_NO_ACTIVE_TAB', 'No active tab is available');
       }
       resolved = { tabId: tab.id, tab };
-    } else {
-      const agentTab = await ensureAgentTab();
-      resolved = { tabId: agentTab.id, tab: agentTab };
     }
 
     return resolved;
@@ -565,14 +499,13 @@ export function createPiBridgeRuntime({
 
   async function listTabs() {
     const tabs = await tabsApi.query({});
-    const agentTabId = await getStoredAgentTabId();
     return tabs.map((tab) => ({
       tabId: tab.id,
       url: tab.url,
       title: tab.title,
       active: !!tab.active,
       pinned: !!tab.pinned,
-      isAgentTab: typeof agentTabId === 'number' && tab.id === agentTabId,
+      isAgentTab: false,
     }));
   }
 
@@ -720,10 +653,6 @@ export function createPiBridgeRuntime({
 
     tabsApi.onRemoved?.addListener?.((tabId) => {
       void observability.handleTabRemoved(tabId, 'tab_removed');
-      if (cachedAgentTabId === tabId) {
-        cachedAgentTabId = null;
-        void storageSet({ [AGENT_TAB_STORAGE_KEY]: null }).catch(() => {});
-      }
     });
 
     debuggerApi.onDetach?.addListener?.((source, reason) => {
@@ -827,7 +756,7 @@ export function createPiBridgeRuntime({
         logger.warn?.('[pi-bridge] failed to arm observability for tab', { tabId, error });
       });
     },
-    resolveDefaultTabId: async () => (await ensureAgentTab()).id,
+    resolveDefaultTabId: async () => (await resolveTarget()).tabId,
     waitForTabSettled,
   });
 
@@ -920,12 +849,7 @@ export function createPiBridgeRuntime({
       return bridge;
     },
     async resolveRunTaskTab(params = {}) {
-      const usingOverride = typeof (params.tabId ?? params.tab_id) === 'number' || params.useActiveTab === true || params.use_active_tab === true;
-      const target = await resolveTarget({ tabId: params.tabId ?? params.tab_id, useActiveTab: params.useActiveTab ?? params.use_active_tab });
-      if (typeof target.tabId === 'number' && !usingOverride) {
-        await persistAgentTabId(target.tabId);
-      }
-      return target;
+      return await resolveTarget({ tabId: params.tabId ?? params.tab_id, useActiveTab: params.useActiveTab ?? params.use_active_tab });
     },
     async dispose() {
       await observability.stop().catch(() => {});

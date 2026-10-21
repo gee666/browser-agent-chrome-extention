@@ -114,6 +114,58 @@ function inferMode(func) {
   return 'unknown';
 }
 
+test('default requests reuse the active tab without creating, pinning, or closing tabs', async () => {
+  const { chromeApi } = createChromeStub();
+  const mutations = [];
+  chromeApi.tabs.create = async (params) => { mutations.push(['create', params]); return { id: 99 }; };
+  chromeApi.tabs.update = async (...args) => { mutations.push(['update', ...args]); };
+  chromeApi.tabs.remove = async (...args) => { mutations.push(['remove', ...args]); };
+  // A saved dedicated tab from an older version must not affect targeting.
+  chromeApi.storage.local._store.set('piBridge.agentTabId', 99);
+  let activeId = 42;
+  chromeApi.tabs.query = async () => [{ id: activeId, url: 'https://active.test/' }];
+  const runtime = createPiBridgeRuntime({ chromeApi, storageArea: chromeApi.storage.local, logger: { warn() {}, error() {}, debug() {} } });
+  try {
+    await runtime.warmUp();
+    await runtime.handleRequest({ type: 'browser_get_html', params: {} });
+    assert.equal((await runtime.resolveRunTaskTab()).tabId, 42);
+    activeId = 43;
+    assert.equal((await runtime.resolveRunTaskTab()).tabId, 43);
+    assert.equal((await runtime.resolveRunTaskTab({ tab_id: 42 })).tabId, 42);
+    await runtime.handleRequest({ type: 'browser_list_tabs', params: {} });
+    assert.deepEqual(mutations, []);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test('no active tab reports an error instead of creating a placeholder tab', async () => {
+  const { chromeApi } = createChromeStub();
+  chromeApi.tabs.query = async () => [];
+  chromeApi.tabs.create = async () => { assert.fail('must not create a default tab'); };
+  const runtime = createPiBridgeRuntime({ chromeApi, storageArea: chromeApi.storage.local, logger: { warn() {}, error() {}, debug() {} } });
+  try {
+    await assert.rejects(runtime.resolveRunTaskTab(), { code: 'E_NO_ACTIVE_TAB' });
+    await assert.rejects(runtime.handleRequest({ type: 'browser_get_html', params: {} }), { code: 'E_NO_ACTIVE_TAB' });
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test('browser_create_tab creates only the requested tab, without a default placeholder', async () => {
+  const { chromeApi } = createChromeStub();
+  const created = [];
+  chromeApi.tabs.create = async (params) => { created.push(params); return { id: 99, ...params }; };
+  const runtime = createPiBridgeRuntime({ chromeApi, storageArea: chromeApi.storage.local, logger: { warn() {}, error() {}, debug() {} } });
+  try {
+    const result = await runtime.handleRequest({ type: 'browser_create_tab', params: { url: 'https://requested.test/', wait_until: 'none' } });
+    assert.equal(result.tabId, 99);
+    assert.deepEqual(created, [{ url: 'https://requested.test/', active: false, pinned: false }]);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
 test('browser_get_html forwards max_bytes to the content script', async () => {
   let capturedArgs = null;
   const { chromeApi } = createChromeStub({
