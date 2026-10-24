@@ -45,11 +45,14 @@
       <label for="piBridgeUrl">Bridge URLs</label>
       <textarea id="piBridgeUrl" rows="4" placeholder="ws://127.0.0.1:7878&#10;ws://127.0.0.1:7879&#10;..."></textarea>
       <p class="section-desc" style="margin-top:4px">One URL per line. Defaults scan ports 7878–7887 so multiple pi instances can run side by side.</p>
+      <button id="piBridgeSave" type="button" disabled>Save Bridge Settings</button>
+      <span id="piBridgeStatus" role="status" aria-live="polite"></span>
     </div>
 
     <hr class="section-divider">
 
     <h2>Decision mode</h2>
+    <p id="jev-availability" role="status" class="section-desc"></p>
     <p class="section-desc">LLM mode uses the provider below for decisions. Jev mode uses a separate classification endpoint. Keep the LLM provider configured for helper work and optional fallback.</p>
 
     <div class="field-group">
@@ -235,6 +238,7 @@
       <div class="oauth-status" id="status-gemini-cli"></div>
     </div>
   </div>
+  <script src="bridge-settings.js" type="module"></script>
   <script src="options.js" type="module"></script>
 </body>
 </html>

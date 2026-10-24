@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DECISION_CONFIG_KEYS, decisionOptions, appendDiscoveryReport } from './decision-settings.js';
 import { DECISION_STORAGE_KEYS } from '../options/decision-settings.js';
-import { normalizeJevConfig } from '../lib/browser-agent-core/background/jev.js';
+import * as core from '../lib/browser-agent-core/background/index.js';
+const { normalizeJevConfig } = core;
 
 test('normal mode preserves configured provider and defaults', () => {
   const llm = {};
@@ -38,7 +39,7 @@ test('runtime maps each stored cache selector and retains legacy headers and pro
     const result = decisionOptions(config, () => assert.fail('unexpected provider'), llm);
     assert.equal(result.helperLlm, llm);
     assert.equal(result.decisionConfig.cacheMode, jevCacheMode);
-    assert.equal(normalizeJevConfig(result.decisionConfig).cacheMode, jevCacheMode);
+    if (normalizeJevConfig) assert.equal(normalizeJevConfig(result.decisionConfig).cacheMode, jevCacheMode);
     assert.deepEqual(result.decisionConfig.headers, config.jevHeaders);
     assert.deepEqual(config, before);
   }
@@ -53,7 +54,7 @@ test('existing stored Jev settings request context without mutating storage', ()
   assert.deepEqual(config, before);
 });
 
-test('invalid stored cache modes reach core validation rather than silently changing behavior', () => {
+test('invalid stored cache modes reach core validation rather than silently changing behavior', { skip: !normalizeJevConfig && 'Published core has no Jev runtime' }, () => {
   for (const jevCacheMode of ['', 'CONTEXT', false, 1, 'invalid']) {
     const result = decisionOptions({ decisionMode: 'jev', jevCacheMode }, () => {}, {});
     assert.throws(() => normalizeJevConfig(result.decisionConfig), /Invalid Jev cache mode/);

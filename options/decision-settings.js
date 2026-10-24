@@ -1,4 +1,26 @@
-import { normalizeJevConfig } from '../lib/browser-agent-core/background/jev.js';
+import * as core from '../lib/browser-agent-core/background/index.js';
+
+// Jev is optional: published core revisions may not provide it. Importing its
+// missing module statically prevented *all* options (including bridge URLs)
+// from loading. Keep settings editable without pretending the runtime exists.
+export const jevAvailable = typeof core.testJevConnection === 'function';
+
+export function validateJevHeaders(headers) {
+  if (typeof core.normalizeJevConfig === 'function') {
+    core.normalizeJevConfig({ headers });
+    return;
+  }
+  const seen = new Set();
+  const reserved = /^(authorization|content-type|content-length|content-encoding|host|user-agent|cookie|cookie2|connection|origin|referer|accept-encoding|transfer-encoding|upgrade|via|te|trailer|expect|date|dnt|permissions-policy|x-autojev-cache-mode)$|^(sec-|proxy-)/i;
+  for (const [name, value] of Object.entries(headers)) {
+    const lower = name.toLowerCase();
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || reserved.test(name) ||
+        seen.has(lower) || typeof value !== 'string' || /[^\x20-\x7e\x80-\xff]/.test(value)) {
+      throw new Error('Invalid or reserved header');
+    }
+    seen.add(lower);
+  }
+}
 
 // Stored beside the existing provider credentials in chrome.storage.local.
 export const DECISION_DEFAULTS = Object.freeze({
@@ -86,10 +108,10 @@ export function validateDecisionSettings(values) {
     invalid('helperModel', 'Helper model cannot contain control characters.');
   }
   const jevHeaders = jsonObject(values.jevHeaders, 'jevHeaders', 'Jev headers');
-  // Use the runtime's header rules instead of maintaining a separate reserved-name
-  // regex or control-character list. Do not forward its error text to the UI.
+  // Prefer the runtime's header rules; older cores use the conservative local
+  // validator above. Never forward potentially credential-bearing error text.
   try {
-    normalizeJevConfig({ headers: jevHeaders });
+    validateJevHeaders(jevHeaders);
   } catch {
     invalid('jevHeaders', 'Jev headers contain an invalid or reserved name or value.');
   }
@@ -129,6 +151,10 @@ export function initDecisionSettings(document, runtime, stored) {
   const fields = Object.fromEntries(DECISION_STORAGE_KEYS.map(key => [key, document.getElementById(key)]));
   const testButton = document.getElementById('jev-test-btn');
   const status = document.getElementById('jev-test-status');
+  const availability = document.getElementById('jev-availability');
+  if (!jevAvailable && availability) {
+    availability.textContent = 'Jev is unavailable in the installed browser-agent-core. Normal LLM mode and the pi bridge remain available.';
+  }
   for (const [key, field] of Object.entries(fields)) {
     const value = stored[key] ?? DECISION_DEFAULTS[key];
     if (key === 'jevFallbackEnabled') field.checked = value;

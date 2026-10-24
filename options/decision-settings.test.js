@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { normalizeJevConfig } from '../lib/browser-agent-core/background/jev.js';
+import * as core from '../lib/browser-agent-core/background/index.js';
+const { normalizeJevConfig } = core;
 import {
   DECISION_DEFAULTS, DECISION_STORAGE_KEYS, DecisionValidationError,
   validateDecisionSettings, toJevConnectionConfig, initDecisionSettings,
@@ -67,7 +68,7 @@ test('cache selector round-trips every mode and tests unsaved selections without
     const { ui, fields, click } = init(stored, { sendMessage(message, callback) { messages.push(message); callback({ ok: true }); } });
     fields.get('jevCacheMode').value = jevCacheMode;
     assert.equal(ui.read().jevCacheMode, jevCacheMode);
-    assert.equal(normalizeJevConfig(toJevConnectionConfig(ui.read())).cacheMode, jevCacheMode);
+    if (normalizeJevConfig) assert.equal(normalizeJevConfig(toJevConnectionConfig(ui.read())).cacheMode, jevCacheMode);
     await click();
     assert.equal(messages[0].config.cacheMode, jevCacheMode);
     assert.deepEqual(messages[0].config.headers, before.jevHeaders);
@@ -142,7 +143,7 @@ test('rejects invalid fields without quoting any entered value', () => {
   }
 });
 
-test('accepted UI configurations pass the shared core normalizer', () => {
+test('accepted UI configurations pass the shared core normalizer', { skip: !normalizeJevConfig && 'Published core has no Jev runtime' }, () => {
   for (const timeoutMs of [1, 1200000, 3600000]) {
     for (const endpoint of ['http://localhost:8765', 'http://localhost:8765/v1', 'https://example.com/v1/systemone']) {
       for (const headers of [{}, { 'X-Key': 'header-secret' }, { 'X-AutoJev-Prefix-Cache': 'true' }, { 'x-api-key': 'local-key' }]) {
@@ -169,7 +170,7 @@ test('reserved headers and all control characters are rejected by both UI and co
     ...[...Array.from({ length: 32 }, (_, index) => index), 127].map(code => ({ 'X-Key': `secret-marker${String.fromCharCode(code)}end` })),
   ];
   for (const headers of badHeaders) {
-    assert.throws(() => normalizeJevConfig({ headers }));
+    if (normalizeJevConfig) assert.throws(() => normalizeJevConfig({ headers }));
     assert.throws(() => validateDecisionSettings(values({ jevHeaders: JSON.stringify(headers) })), error => {
       assert.equal(error.field, 'jevHeaders');
       assert.ok(!error.message.includes('secret-marker'));

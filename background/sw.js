@@ -7,8 +7,9 @@ import {
   OPENAI_REDIRECT_URI, ANTHROPIC_REDIRECT_URI, GEMINI_REDIRECT_URI,
   setPendingOAuth, setPendingOAuthTabId, getPendingOAuth, clearPendingOAuth,
   storeOAuthTokens, getOAuthTokens, clearOAuthTokens, parseRedirectUrl,
-  formatDebugEntry, makeDebugFilename, testJevConnection,
+  formatDebugEntry, makeDebugFilename,
 } from '../lib/browser-agent-core/background/index.js';
+import * as core from '../lib/browser-agent-core/background/index.js';
 import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
 // TODO(public-api): importing from the package `src/` entry reaches across
 // the pi-browser-agent-bridge package boundary. The sub-library maintainers
@@ -315,6 +316,9 @@ async function startAgentTask({
     }
 
     const llm = createProvider(config);
+    if (config.decisionMode === 'jev' && typeof core.testJevConnection !== 'function') {
+      throw new Error('Jev requires a browser-agent-core revision with Jev support. Select normal LLM mode until that core revision is available.');
+    }
     const decisions = decisionOptions(config, createProvider, llm);
     taskRun.decisionTrace = [];
     await chrome.storage.local.set({ agentDecisionTrace: [] });
@@ -814,7 +818,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: 'Extension settings required' });
       return false;
     }
-    testJevConnection(message.config)
+    if (typeof core.testJevConnection !== 'function') {
+      sendResponse({ ok: false, error: 'Jev is unavailable in the installed browser-agent-core.' });
+      return false;
+    }
+    core.testJevConnection(message.config)
       .then(result => sendResponse(result))
       .catch(() => sendResponse({ ok: false, error: 'Connection test failed. Check endpoint, credentials and timeout.' }));
     return true;
