@@ -18,6 +18,40 @@ test('normal mode preserves configured provider and defaults', () => {
   assert.deepEqual([...DECISION_CONFIG_KEYS].sort(), [...DECISION_STORAGE_KEYS].sort());
 });
 
+for (const decisionMode of [undefined, 'llm']) {
+  for (const useVision of [false, true]) {
+    test(`normal LLM task works without Jev: mode=${decisionMode}, vision=${useVision}`, async (t) => {
+      const fetch = t.mock.method(globalThis, 'fetch', async () => {
+        assert.fail('Normal LLM mode must not contact Jev');
+      });
+      const llm = { complete: async () => JSON.stringify({ action: { done: { success: true, message: 'LLM task completed' } } }) };
+      const helperLlm = { complete: () => assert.fail('Unused Jev helper must not run') };
+      const decisions = decisionOptions({
+        decisionMode,
+        // Even stale, invalid Jev settings must not affect normal tasks.
+        jevBaseUrl: 'not-a-url', jevCacheMode: 'invalid', jevTimeoutMs: -1,
+        helperModel: 'unused-helper',
+      }, () => assert.fail('Normal mode must not create a Jev helper provider'), llm);
+      assert.equal(decisions.decisionMode, 'llm');
+      assert.equal(decisions.helperLlm, llm);
+      let screenshots = 0;
+      const agent = new core.AgentCore({
+        ...decisions, llm, helperLlm, useVision,
+        bridge: {
+          getActiveTabId: async () => 1,
+          getPageState: async () => ({ url: 'https://example.com', title: 'Test', domText: 'Ready', elements: [], context: {} }),
+          takeScreenshot: async () => { screenshots++; return null; },
+          sendStatus() {},
+        },
+        executor: { execute: () => assert.fail('Done must not issue input') },
+      });
+      assert.equal(await agent.run('Finish the task'), 'LLM task completed');
+      assert.equal(fetch.mock.callCount(), 0);
+      assert.equal(screenshots, useVision ? 1 : 0);
+    });
+  }
+}
+
 test('Jev settings map without losing false and provider auth settings', () => {
   const config = { decisionMode: 'jev', provider: 'openai-codex', model: 'primary', helperModel: ' gpt-6-luna ', jevBaseUrl: 'http://localhost:8765', jevApiKey: 'local-test', jevHeaders: { 'X-App': 'extension' }, jevRequestParams: { custom: 1 }, jevTimeoutMs: 1234, jevFallbackEnabled: false };
   const result = decisionOptions(config, c => c, {});

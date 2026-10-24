@@ -1,2 +1,5 @@
 # Debug interaction logs (downloaded to browser's Downloads/logs/ by default)
 logs/
+
+# Local scratch files, test logs, and downloaded reference repositories
+tmp/
