@@ -34,10 +34,11 @@ test('bridge URLs save and survive a fresh page without any model/provider setti
   assert.match(first.elements.get('piBridgeStatus').textContent, /saved/);
   assert.deepEqual(Object.keys(first.store), ['piBridgeConfig']);
   assert.equal(first.store.piBridgeConfig.enabled, true);
-  assert.ok(first.store.piBridgeConfig.urls.includes('ws://127.0.0.1:7878'));
+  assert.deepEqual(first.store.piBridgeConfig.urls, ['ws://127.0.0.1:7878']);
+  assert.equal(first.elements.get('piBridgeUrl').value, 'ws://127.0.0.1:7878');
   const reloaded = page(first.store);
   await initBridgeSettings(reloaded.document, reloaded.chrome);
-  assert.equal(reloaded.elements.get('piBridgeUrl').value, first.elements.get('piBridgeUrl').value);
+  assert.equal(reloaded.elements.get('piBridgeUrl').value, 'ws://127.0.0.1:7878');
 });
 
 test('custom URLs and disabled state round-trip without changing provider credentials', async () => {
