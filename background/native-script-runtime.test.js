@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-import { InputControlBridge } from '../lib/browser-agent-core/background/index.js';
-import { createNativeScriptProvider, createNativeScriptRuntime } from './native-script-runtime.js';
+import { InputControlBridge, NativeScriptService } from '../lib/browser-agent-core/background/index.js';
+import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
+import { createConfiguredInputControl, createNativeScriptProvider, createNativeScriptRuntime } from './native-script-runtime.js';
 import { createJsNavigationDestructiveHandlers } from '../lib/pi-browser-agent-bridge/src/handlers/js-navigation-family.js';
 
 function deferred() {
@@ -43,7 +44,37 @@ test('script translation uses the normal configured LLM with Jev disabled and it
   assert.throws(() => createNativeScriptProvider({ decisionMode: 'invalid' }, () => ({})), /Invalid decision mode/);
 });
 
-test('script runtime uses a dedicated Python bridge and current provider, forwards the complete request', async () => {
+test('shared input factory honors CDP, Python, and the default without connecting Python', () => {
+  assert.ok(createConfiguredInputControl({ inputBackend: 'cdp' }) instanceof CdpInputControlBridge);
+  assert.ok(createConfiguredInputControl() instanceof CdpInputControlBridge);
+  assert.ok(createConfiguredInputControl({ inputBackend: 'native' }) instanceof InputControlBridge);
+  assert.throws(() => createConfiguredInputControl({ inputBackend: 'unknown' }), { code: 'E_INPUT_BACKEND' });
+});
+
+test('configuration is loaded once per request and passed to both provider and input factory', async () => {
+  let config = { inputBackend: 'cdp', model: 'first' };
+  let loads = 0;
+  const selected = [];
+  const runtime = createNativeScriptRuntime({
+    loadConfiguration: async () => { loads++; return config; },
+    loadProvider: (value) => { assert.equal(value, config); return {}; },
+    createInputControl: ({ config: value, tabId }) => {
+      assert.equal(value, config);
+      assert.equal(tabId, 42);
+      const input = createConfiguredInputControl(value);
+      selected.push(input.constructor);
+      return input;
+    },
+    createService: () => ({ executeExternalScript: async () => ({ type: 'undefined' }) }),
+  });
+  await runtime.executeExternalScript(request());
+  config = { inputBackend: 'native', model: 'second' };
+  await runtime.executeExternalScript(request());
+  assert.equal(loads, 2);
+  assert.deepEqual(selected, [CdpInputControlBridge, InputControlBridge]);
+});
+
+test('script runtime forwards its trusted input interface and current provider with the complete request', async () => {
   const llm = {};
   let providerLoads = 0;
   const calls = [];
@@ -71,6 +102,43 @@ test('script runtime uses a dedicated Python bridge and current provider, forwar
   assert.equal(runtime.busy, false);
   await runtime.executeExternalScript(request());
   assert.equal(providerLoads, 2, 'provider configuration must be refreshed for each request');
+});
+
+test('translated CDP click and key input works when no Python host is installed', async () => {
+  const previousChrome = globalThis.chrome;
+  globalThis.chrome = { runtime: { connectNative() { assert.fail('CDP must not connect to Python'); } } };
+  const commands = [];
+  const context = { screenX: 0, screenY: 0, outerHeight: 900, innerHeight: 800,
+    outerWidth: 1000, innerWidth: 1000, devicePixelRatio: 1, scrollX: 0, scrollY: 0 };
+  const state = { context, width: 1000, height: 800, url: 'https://example.test/',
+    visible: true, editable: true, x: 100, y: 100 };
+  const transport = {
+    async send(tabId, method, params) { commands.push({ tabId, method, params }); return {}; },
+    async detach() {}, dispose() {},
+  };
+  const runtime = createNativeScriptRuntime({
+    loadConfiguration: async () => ({ inputBackend: 'cdp' }),
+    loadProvider: async () => ({ complete: async () => JSON.stringify({ version: 1,
+      steps: [{ op: 'click', selector: '#button' }, { op: 'key', key: 'Enter' }],
+      result: { kind: 'undefined' },
+    }) }),
+    createInputControl({ config, tabId }) {
+      assert.equal(config.inputBackend, 'cdp');
+      return new CdpInputControlBridge({ bridge: { getActiveTabId: () => tabId }, transport });
+    },
+    createService: (options) => new NativeScriptService({ ...options, page: {
+      snapshot: async () => state, target: async () => state, assertActive: async () => {},
+    } }),
+  });
+  try {
+    const result = await runtime.executeExternalScript(request());
+    assert.equal(result.type, 'undefined');
+    assert.ok(commands.length >= 4);
+    assert.ok(commands.every(({ tabId, method }) => tabId === 42 && ['Input.dispatchMouseEvent', 'Input.dispatchKeyEvent'].includes(method)));
+    assert.deepEqual(commands.filter(({ method, params }) => method === 'Input.dispatchMouseEvent' && params.type !== 'mouseMoved').map(({ params }) => params.type), ['mousePressed', 'mouseReleased']);
+    assert.deepEqual(commands.filter(({ method }) => method === 'Input.dispatchKeyEvent').map(({ params }) => params.type), ['keyDown', 'keyUp']);
+    assert.equal(runtime.busy, false);
+  } finally { globalThis.chrome = previousChrome; }
 });
 
 test('default core service translates reads through the selected LLM in both decision modes', async () => {
@@ -132,6 +200,23 @@ test('global script ownership covers provider setup, translation, execution, and
   await assert.rejects(runtime.executeExternalScript(request()), { code: 'E_BUSY' });
   execution.resolve({ type: 'undefined', value: undefined });
   await first;
+  assert.equal(runtime.busy, false);
+});
+
+test('asynchronous backend cleanup finishes before ownership is released', async () => {
+  const cleanup = deferred();
+  const started = deferred();
+  const runtime = createNativeScriptRuntime({
+    loadProvider: async () => ({}),
+    createInputControl: () => ({ disconnect() { started.resolve(); return cleanup.promise; } }),
+    createService: () => ({ executeExternalScript: async () => ({ type: 'undefined' }) }),
+  });
+  const run = runtime.executeExternalScript(request());
+  await started.promise;
+  assert.equal(runtime.busy, true);
+  await assert.rejects(runtime.executeExternalScript(request()), { code: 'E_BUSY' });
+  cleanup.resolve();
+  await run;
   assert.equal(runtime.busy, false);
 });
 
@@ -250,7 +335,10 @@ test('provider and native execution failures release ownership without a fallbac
 
 test('service worker wires scripts to the native runtime and prevents tasks from taking its lock', async () => {
   const source = await readFile(new URL('./sw.js', import.meta.url), 'utf8');
-  assert.match(source, /loadProvider: async \(\) => createNativeScriptProvider\(await loadAgentConfig\(\), createProvider\)/);
+  assert.match(source, /loadConfiguration: loadAgentConfig/);
+  assert.match(source, /loadProvider: \(config\) => createNativeScriptProvider\(config, createProvider\)/);
+  assert.match(source, /inputBackend: config\.inputBackend \|\| DEFAULT_INPUT_BACKEND/);
+  assert.match(source, /createConfiguredInputControl as createInputControl/);
   assert.match(source, /isTaskRunning: \(\) => currentTaskRun !== null/);
   assert.match(source, /executeExternalScript: \(request\) => nativeScriptRuntime\.executeExternalScript\(request\)/);
   assert.match(source, /if \(nativeScriptRuntime\.busy\)\s*\{\s*throw createTaskError\('E_BUSY'/);

@@ -1,5 +1,13 @@
 import * as core from '../lib/browser-agent-core/background/index.js';
 import { decisionOptions } from './decision-settings.js';
+import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
+
+// Shared by task and script execution. Unset settings retain the CDP default.
+export function createConfiguredInputControl({ inputBackend = 'cdp', bridge, inspector } = {}) {
+  if (inputBackend === 'native') return new core.InputControlBridge();
+  if (inputBackend === 'cdp') return new CdpInputControlBridge({ bridge, inspector });
+  throw runtimeError('E_INPUT_BACKEND', 'Unknown input backend in extension settings');
+}
 
 // Jev makes browser choices, not text completions. Script translation uses
 // the same configured helper LLM as normal Jev helper tasks.
@@ -24,6 +32,7 @@ function throwIfAborted(signal) {
  */
 export function createNativeScriptRuntime({
   loadProvider,
+  loadConfiguration = async () => ({}),
   isTaskRunning = () => false,
   createInputControl = () => new core.InputControlBridge(),
   createService = (options) => new core.NativeScriptService(options),
@@ -39,22 +48,22 @@ export function createNativeScriptRuntime({
       busy = true;
       let inputControl;
       const onAbort = () => {
-        try { inputControl?.abort(); } catch { /* best-effort cancellation cleanup */ }
+        try { Promise.resolve(inputControl?.abort()).catch(() => {}); } catch { /* best-effort cancellation cleanup */ }
       };
       request.signal?.addEventListener('abort', onAbort, { once: true });
       try {
-        const llm = await loadProvider();
+        const config = await loadConfiguration();
         throwIfAborted(request.signal);
-        // Never use the configured task input backend here. External scripts
-        // require python-input-control, even when normal tasks use CDP.
-        inputControl = createInputControl();
+        const llm = await loadProvider(config);
+        throwIfAborted(request.signal);
+        inputControl = await createInputControl({ config, tabId: request.tabId });
         throwIfAborted(request.signal);
         const service = createService({ llm, inputControl });
         return await service.executeExternalScript(request);
       } finally {
         request.signal?.removeEventListener('abort', onAbort);
         try {
-          inputControl?.disconnect();
+          await inputControl?.disconnect();
         } finally {
           busy = false;
         }

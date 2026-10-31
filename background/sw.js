@@ -1,5 +1,5 @@
 import {
-  AgentCore, ActionExecutor, InputControlBridge,
+  AgentCore, ActionExecutor,
   OpenAIProvider, AnthropicProvider, OllamaProvider, OpenRouterProvider, NvidiaProvider,
   OpenAICodexOAuthProvider, AnthropicOAuthProvider, GeminiOAuthProvider,
   buildOpenAIAuthUrl, buildAnthropicAuthUrl, buildGeminiAuthUrl,
@@ -10,7 +10,6 @@ import {
   formatDebugEntry, makeDebugFilename,
 } from '../lib/browser-agent-core/background/index.js';
 import * as core from '../lib/browser-agent-core/background/index.js';
-import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.js';
 // TODO(public-api): importing from the package `src/` entry reaches across
 // the pi-browser-agent-bridge package boundary. The sub-library maintainers
 // should expose `createBridgeController` and `startBridge` from the package
@@ -18,7 +17,7 @@ import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.
 // internal file paths. Refactor is intentionally out of scope here.
 import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
 import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
-import { createNativeScriptProvider, createNativeScriptRuntime } from './native-script-runtime.js';
+import { createConfiguredInputControl as createInputControl, createNativeScriptProvider, createNativeScriptRuntime } from './native-script-runtime.js';
 import { createKeepalivePump } from './pi-bridge-keepalive.js';
 import { DECISION_CONFIG_KEYS, decisionOptions, appendDiscoveryReport } from './decision-settings.js';
 import { createPiBridgeReconciler } from './pi-bridge-reconciler.js';
@@ -79,7 +78,13 @@ function buildTaskFromConversation(messages) {
 }
 
 const nativeScriptRuntime = createNativeScriptRuntime({
-  loadProvider: async () => createNativeScriptProvider(await loadAgentConfig(), createProvider),
+  loadConfiguration: loadAgentConfig,
+  loadProvider: (config) => createNativeScriptProvider(config, createProvider),
+  createInputControl: async ({ config, tabId }) => createInputControl({
+    inputBackend: config.inputBackend || DEFAULT_INPUT_BACKEND,
+    bridge: config.inputBackend === 'native' ? undefined : await piBridgeRuntime.createAgentBrowserBridge(tabId),
+    inspector: piBridgeRuntime.inspector,
+  }),
   isTaskRunning: () => currentTaskRun !== null,
 });
 
@@ -703,18 +708,6 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 void bootPiBridge();
-
-/**
- * Create an input-control bridge based on the configured backend.
- *   - 'native' -> InputControlBridge (python-input-control via native messaging)
- *   - 'cdp'    -> CdpInputControlBridge (Chrome DevTools Protocol) — default
- */
-function createInputControl({ inputBackend, bridge, inspector }) {
-  if (inputBackend === 'native') {
-    return new InputControlBridge();
-  }
-  return new CdpInputControlBridge({ bridge, inspector });
-}
 
 // ─── OAuth callback interception ─────────────────────────────────────────────
 // Registered at TOP LEVEL so it survives service worker restarts.
