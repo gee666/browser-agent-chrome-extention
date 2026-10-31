@@ -18,6 +18,7 @@ import { CdpInputControlBridge } from '../lib/browser-agent-input-control/index.
 // internal file paths. Refactor is intentionally out of scope here.
 import { createBridgeController, startBridge } from '../lib/pi-browser-agent-bridge/src/index.js';
 import { createPiBridgeRuntime } from './pi-bridge-runtime.js';
+import { createNativeScriptProvider, createNativeScriptRuntime } from './native-script-runtime.js';
 import { createKeepalivePump } from './pi-bridge-keepalive.js';
 import { DECISION_CONFIG_KEYS, decisionOptions, appendDiscoveryReport } from './decision-settings.js';
 import { createPiBridgeReconciler } from './pi-bridge-reconciler.js';
@@ -77,9 +78,15 @@ function buildTaskFromConversation(messages) {
   );
 }
 
+const nativeScriptRuntime = createNativeScriptRuntime({
+  loadProvider: async () => createNativeScriptProvider(await loadAgentConfig(), createProvider),
+  isTaskRunning: () => currentTaskRun !== null,
+});
+
 const piBridgeRuntime = createPiBridgeRuntime({
   chromeApi: chrome,
   logger: console,
+  executeExternalScript: (request) => nativeScriptRuntime.executeExternalScript(request),
   async onRunTask(params) {
     return await startAgentTask(params || {});
   },
@@ -265,6 +272,9 @@ async function startAgentTask({
   useVision = null,
   use_vision = null,
 } = {}) {
+  if (nativeScriptRuntime.busy) {
+    throw createTaskError('E_BUSY', 'Desktop input is owned by a browser script');
+  }
   if (currentTaskRun) {
     throw createTaskError('E_BUSY', `Browser task ${currentTaskRun.taskId || 'current'} is already running`, {
       taskId: currentTaskRun.taskId || null,

@@ -166,6 +166,54 @@ test('browser_create_tab creates only the requested tab, without a default place
   }
 });
 
+test('external JS requests reach the injected rewrite service without raw browser execution', async () => {
+  const { chromeApi, scriptingCalls } = createChromeStub({
+    inspectorSends: {
+      'Runtime.evaluate': () => assert.fail('external source must not reach CDP'),
+    },
+  });
+  const calls = [];
+  const runtime = createPiBridgeRuntime({
+    chromeApi, storageArea: chromeApi.storage.local,
+    logger: { warn() {}, error() {}, debug() {} },
+    async executeExternalScript(request) {
+      calls.push(request);
+      return { type: 'string', value: 'Example', console_entries: [] };
+    },
+  });
+  try {
+    const read = await runtime.handleRequest({ type: 'browser_evaluate_js', params: { expression: 'document.title', world: 'main' } });
+    const run = await runtime.handleRequest({ type: 'browser_run_js', params: { code: 'return args[0];', args: ['Example'], tab_id: 42 } });
+    assert.equal(read.value, 'Example');
+    assert.equal(run.value, 'Example');
+    assert.equal(calls[0].kind, 'expression');
+    assert.equal(calls[0].source, 'document.title');
+    assert.equal(calls[0].tabId, 42);
+    assert.equal(calls[1].kind, 'program');
+    assert.equal(calls[1].source, 'return args[0];');
+    assert.deepEqual(calls[1].args, ['Example']);
+    assert.deepEqual(scriptingCalls, []);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test('external JS fails closed when the rewrite service is absent, while trusted inspection still works', async () => {
+  const { chromeApi, scriptingCalls } = createChromeStub({ scripts: { html: async () => ({ html: '<p>trusted inspection</p>' }) } });
+  const runtime = createPiBridgeRuntime({
+    chromeApi, storageArea: chromeApi.storage.local, logger: { warn() {}, error() {}, debug() {} },
+  });
+  try {
+    await assert.rejects(runtime.handleRequest({ type: 'browser_evaluate_js', params: { expression: 'document.title' } }), { code: 'E_SCRIPT_REWRITE_UNAVAILABLE' });
+    await assert.rejects(runtime.handleRequest({ type: 'browser_run_js', params: { code: 'return 1;' } }), { code: 'E_SCRIPT_REWRITE_UNAVAILABLE' });
+    const result = await runtime.handleRequest({ type: 'browser_get_html', params: {} });
+    assert.equal(result.html, '<p>trusted inspection</p>');
+    assert.equal(scriptingCalls.length, 1);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
 test('browser_get_html forwards max_bytes to the content script', async () => {
   let capturedArgs = null;
   const { chromeApi } = createChromeStub({

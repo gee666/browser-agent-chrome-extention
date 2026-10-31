@@ -87,6 +87,7 @@ function describeStatus(status) {
   if (status.state === 'acting') return 'Acting in browser';
   if (status.state === 'running') return 'Working';
   if (status.state === 'stopping') return 'Stopping';
+  if (status.state === 'paused') return 'Manual CAPTCHA required';
   if (status.state === 'done') return 'Done';
   if (status.state === 'error') return 'Error';
   if (status.state === 'stopped') return 'Stopped';
@@ -114,9 +115,9 @@ function renderStatus(status) {
   runBtn.disabled = false;
   taskInput.placeholder = busy ? 'Send a steer or correction…' : 'Ask a follow-up or start a new task…';
 
-  if (busy) {
+  if (busy || latestStatus.state === 'paused') {
     activityCard.hidden = false;
-    activityTitle.textContent = latestStatus.state === 'acting' ? 'Doing' : 'Thinking';
+    activityTitle.textContent = latestStatus.state === 'paused' ? 'Manual input required' : latestStatus.state === 'acting' ? 'Doing' : 'Thinking';
     activityMessage.textContent = latestStatus.message || latestStatus.nextGoal || 'The agent is reading the page and planning.';
     currentUrlEl.textContent = latestStatus.url || '';
     iterationCounter.textContent = Number.isFinite(latestStatus.iteration)

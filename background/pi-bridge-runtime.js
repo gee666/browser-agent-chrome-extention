@@ -270,6 +270,7 @@ export function createPiBridgeRuntime({
   logger = console,
   storageArea = chrome.storage.local,
   onRunTask,
+  executeExternalScript,
 } = {}) {
   const tabsApi = chromeApi.tabs;
   const windowsApi = chromeApi.windows;
@@ -747,6 +748,7 @@ export function createPiBridgeRuntime({
   });
 
   const jsNavigationHandlers = createJsNavigationDestructiveHandlers({
+    executeExternalScript,
     tabsApi,
     windowsApi,
     inspector,

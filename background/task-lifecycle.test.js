@@ -46,6 +46,27 @@ test('blocked staged completion remains machine-readable in both settlement path
   assert.equal(buildTaskResult({}, 'done', { finalStatus: { success: true } }).success, true);
 });
 
+test('manual CAPTCHA pauses settle and preserve the human handoff in both completion paths', () => {
+  const finalStatus = {
+    state: 'paused', reason: 'manual_captcha', manualRequired: true,
+    success: false, blocked: true, message: 'Complete the CAPTCHA manually.',
+    handoff: { type: 'manual_captcha', screenshot: 'data:image/jpeg;base64,fixture' },
+  };
+  assert.equal(isSettledByStatus('paused'), true);
+  for (const result of [
+    buildTaskResult({}, 'paused', { finalStatus }),
+    buildTaskResultFromRun({}, { lastStatus: finalStatus }),
+    buildTaskResultFromRun({}, { runResult: finalStatus }),
+  ]) {
+    assert.equal(result.status, 'paused');
+    assert.equal(result.manualRequired, true);
+    assert.equal(result.success, false);
+    assert.equal(result.blocked, true);
+    assert.equal(result.reason, 'manual_captcha');
+    assert.deepEqual(result.handoff, finalStatus.handoff);
+  }
+});
+
 test('run completion preserves done message', () => {
   const result = buildTaskResultFromRun({ task: 'do task' }, {
     runResult: 'Finished successfully',

@@ -34,7 +34,7 @@ export function throwIfCancelled(taskRun, phase = 'startup') {
 }
 
 export function isSettledByStatus(status) {
-  return status === 'done' || status === 'stopped';
+  return status === 'done' || status === 'stopped' || status === 'paused';
 }
 
 export function buildTaskResult(taskRun, status, extra = {}) {
@@ -46,6 +46,8 @@ export function buildTaskResult(taskRun, status, extra = {}) {
     endedAt: Date.now(),
     ...(typeof extra.finalStatus?.success === 'boolean' ? { success: extra.finalStatus.success } : {}),
     ...(extra.finalStatus?.blocked === true ? { blocked: true } : {}),
+    ...(extra.finalStatus?.manualRequired === true ? { manualRequired: true } : {}),
+    ...(extra.finalStatus?.reason === 'manual_captcha' ? { reason: 'manual_captcha', handoff: extra.finalStatus.handoff } : {}),
     ...extra,
   };
 }
@@ -55,6 +57,14 @@ export function buildTaskResultFromRun(taskRun, { runResult = null, lastStatus =
     return buildTaskResult(taskRun, 'done', {
       message: lastStatus.message || runResult || null,
       finalStatus: lastStatus,
+    });
+  }
+
+  if (lastStatus?.state === 'paused' || runResult?.state === 'paused') {
+    const status = lastStatus?.state === 'paused' ? lastStatus : runResult;
+    return buildTaskResult(taskRun, 'paused', {
+      message: status.message || 'Complete the CAPTCHA manually, then start a new task.',
+      finalStatus: status,
     });
   }
 
