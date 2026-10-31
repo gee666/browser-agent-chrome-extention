@@ -399,6 +399,16 @@ PI_BA_HOST=0.0.0.0 pi
 
 Then set the extension bridge URL to `ws://<wsl-ip>:7878`.
 
+## Pi scripts and native input
+
+Scripts supplied through Pi's `browser_evaluate_js` and `browser_run_js` tools go through AI translation into a validated action/read plan. External JavaScript is never executed directly. The interpreter sends mouse movement, clicks, typing, keys, shortcuts, pauses and scrolling through `python-input-control`. It scrolls off-screen elements into view and checks their coordinates before interaction. Native-input failures stop execution rather than switching to DOM events.
+
+Normal mode uses the browser LLM. Jev mode uses its configured helper LLM for script translation, while Jev continues to make task choices. The Python native host must be installed even if ordinary tasks are configured to use CDP. Native actions require the intended browser tab to be active and affect the foreground desktop.
+
+The translator supports bounded actions, fixed DOM reads and result expressions. It rejects unsupported JavaScript instead of guessing or running it directly. Dedicated inspection tools remain available for broader read-only inspection without AI translation. Script timeouts default to 120 seconds and include translation time.
+
+Both task decision modes include a manual CAPTCHA handoff. Choosing it captures a screenshot for the user when possible, returns a `paused` task with `manualRequired: true`, and stops further model calls and input. There is no automatic CAPTCHA solver. Complete the challenge manually, then start a new task.
+
 ## Development
 
 ### Run framework tests
