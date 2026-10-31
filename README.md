@@ -401,9 +401,9 @@ Then set the extension bridge URL to `ws://<wsl-ip>:7878`.
 
 ## Pi scripts and native input
 
-Scripts supplied through Pi's `browser_evaluate_js` and `browser_run_js` tools go through AI translation into a validated action/read plan. External JavaScript is never executed directly. The interpreter sends mouse movement, clicks, typing, keys, shortcuts, pauses and scrolling through `python-input-control`. It scrolls off-screen elements into view and checks their coordinates before interaction. Native-input failures stop execution rather than switching to DOM events.
+Scripts supplied through Pi's `browser_evaluate_js` and `browser_run_js` tools go through AI translation into a validated action/read plan. External JavaScript is never executed directly. The interpreter sends mouse movement, clicks, typing, keys, shortcuts, pauses and scrolling through the input backend selected in extension settings, either CDP or Python. It scrolls off-screen elements into view and checks their coordinates before interaction. Native-input failures stop execution rather than switching to DOM events.
 
-Normal mode uses the browser LLM. Jev mode uses its configured helper LLM for script translation, while Jev continues to make task choices. The Python native host must be installed even if ordinary tasks are configured to use CDP. Native actions require the intended browser tab to be active and affect the foreground desktop.
+Normal mode uses the browser LLM. Jev mode uses its configured helper LLM for script translation, while Jev continues to make task choices. Scripts and ordinary tasks use the same backend setting. CDP does not require Python installation. Only Python input requires the native host and affects the foreground desktop.
 
 The translator supports bounded actions, fixed DOM reads and result expressions. It rejects unsupported JavaScript instead of guessing or running it directly. Dedicated inspection tools remain available for broader read-only inspection without AI translation. Script timeouts default to 120 seconds and include translation time.
 
